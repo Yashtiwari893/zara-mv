@@ -485,16 +485,30 @@ export async function POST(req: NextRequest) {
     // ─── HANDLE PENDING ACTIONS (e.g., awaiting document label) ─
     if (ctx?.pending_action === 'awaiting_label') {
       const rawLabel = processedMessage.trim()
-      const cleanLabel = rawLabel.replace(/[^a-zA-Z0-9\s\u0900-\u097F]/g, '').substring(0, 50)
-      
-      const updateQuery = ctx.document_id 
+      const cleanLabel = rawLabel.replace(/[^a-zA-Z0-9\s\u0900-\u097F]/g, '').substring(0, 50).trim()
+
+      // Validate label quality — reject pure numbers, single chars, or very short labels.
+      // Re-ask with examples rather than silently saving a useless label like "1".
+      const isPureNumber = /^\d+$/.test(cleanLabel)
+      const isTooShort = cleanLabel.length < 3
+      if (isPureNumber || isTooShort) {
+        await sendWhatsAppMessage({
+          to: cleanFromPhone,
+          message: lang === 'hi'
+            ? `📝 Yeh naam thoda aur descriptive hona chahiye!\n\nKuch aisa likhein:\n_"Aadhar Card", "Bank Statement", "Salary Slip", "Light Bill"_\n\nTaaki baad mein aasani se dhundh sakein 😊`
+            : `📝 Please use a more descriptive name so you can find it easily later!\n\nFor example:\n_"Aadhar Card", "Bank Statement", "Salary Slip", "Light Bill"_`
+        })
+        return NextResponse.json({ ok: true })
+      }
+
+      const updateQuery = ctx.document_id
         ? supabaseAdmin.from('documents').update({ label: cleanLabel }).eq('id', ctx.document_id)
         : supabaseAdmin.from('documents').update({ label: cleanLabel }).eq('storage_path', ctx.document_path).eq('user_id', user.id)
 
       await updateQuery
-      
+
       await supabaseAdmin.from('sessions').update({ context: {} }).eq('user_id', user.id)
-      
+
       await sendWhatsAppMessage({
         to: cleanFromPhone,
         message: lang === 'hi'

@@ -66,38 +66,42 @@ export async function handleAddTask(params: {
     .filter(i => i.length > 2) // avoid tiny fragments
 
   if (items.length > 1) {
-    // Note: This simplified batch insert doesn't use the RPC. 
-    // In a real app, we'd loop or use a batch RPC.
     const normalized = normalizeListName(listName)
-    // First get/create list ID
-    const { data: listId } = await supabase.rpc('get_or_create_list', {
+
+    // Get or create the list — if this fails, abort with error (never show fake success)
+    const { data: listId, error: listRpcErr } = await supabase.rpc('get_or_create_list', {
       p_user_id:      userId,
       p_name:         normalized,
       p_workspace_id: workspaceId ?? null
     })
 
-    if (listId) {
-      const { error: batchErr } = await supabase.from('tasks').insert(
-        items.map(item => ({
-          list_id: listId,
-          user_id: userId,
-          content: item,
-          completed: false // FIX: System uses 'completed', not 'status'
-        }))
-      )
-
-      if (batchErr) {
-        console.error('[task] Batch insert failed:', batchErr)
-        await sendWhatsAppMessage({ to: phone, message: errorMessage(language) })
-        return
-      }
+    if (listRpcErr || !listId) {
+      console.error('[task] get_or_create_list failed for multi-item:', listRpcErr)
+      await sendWhatsAppMessage({ to: phone, message: errorMessage(language) })
+      return
     }
-    
+
+    const { error: batchErr } = await supabase.from('tasks').insert(
+      items.map(item => ({
+        list_id:   listId,
+        user_id:   userId,
+        content:   item,
+        completed: false,
+      }))
+    )
+
+    if (batchErr) {
+      console.error('[task] Batch insert failed:', batchErr)
+      await sendWhatsAppMessage({ to: phone, message: errorMessage(language) })
+      return
+    }
+
+    // Only send success after confirmed DB write
     await sendWhatsAppMessage({
       to: phone,
       message: prefix + (language === 'hi'
-        ? `✅ *${normalized}* list mein ${items.length} items add ho gaye!\n${items.map(i => `• ${i}`).join('\n')}`
-        : `✅ Added ${items.length} items to *${normalized}*!\n${items.map(i => `• ${i}`).join('\n')}`)
+        ? `✅ *${normalized}* list mein add ho gaya:\n\n${items.map((i, n) => `${n + 1}. ${i}`).join('\n')}`
+        : `✅ Added to *${normalized}* list:\n\n${items.map((i, n) => `${n + 1}. ${i}`).join('\n')}`)
     })
     return
   }
