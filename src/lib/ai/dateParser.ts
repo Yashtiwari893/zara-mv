@@ -86,14 +86,23 @@ function extractTime(match: RegExpMatchArray, fullText: string = ''): string {
   else if (ampm === 'am' && hour === 12) hour = 0
   else if (ampm === 'bje' || ampm === 'baje' || ampm === 'bajey' || ampm === '') {
     // ── SMART AM/PM INFERENCE (Indian Context) ─────────────────
-    // Priority: explicit context words override numeric defaults.
+    // Priority order: explicit AM/PM keyword > Hindi context words > numeric defaults.
     const lower = fullText.toLowerCase()
+    const hasExplicitAm = /\bam\b/.test(lower)
+    const hasExplicitPm = /\bpm\b/.test(lower)
     const hasMorning = /\b(subah|morning|savere|pratah)\b/.test(lower)
     const hasAfternoon = /\b(dopahar|duphar|afternoon)\b/.test(lower)
     const hasEvening = /\b(shaam|sham|evening)\b/.test(lower)
     const hasNight = /\b(raat|night)\b/.test(lower)
 
-    if (hasMorning) {
+    if (hasExplicitAm && !hasExplicitPm) {
+      // Explicit "AM" anywhere in text — honor it (e.g. clarification "Tomorrow AM 2 baje")
+      if (hour === 12) hour = 0  // 12 AM = midnight
+      // 1-11 already correct AM, no change needed
+    } else if (hasExplicitPm && !hasExplicitAm) {
+      // Explicit "PM" anywhere in text — honor it
+      if (hour < 12) hour += 12
+    } else if (hasMorning) {
       // Subah → always AM; handle 12 subah = midnight edge case
       if (hour === 12) hour = 0
       // hour already in AM range, no change needed
@@ -316,10 +325,15 @@ Hindi/Hinglish reference:
 - har din = every day | har hafta = every week | har mahina = every month
 
 ## CRITICAL AM/PM RULES (Indian Context — apply strictly)
-When user says a number with bje/baje/bajey or no period marker:
-  - Hours 1–7  → PM (afternoon/evening) UNLESS "subah" is present → then AM
-  - Hours 8–11 → AM (morning) UNLESS "shaam" or "raat" is present → then PM
-  - Hour 12    → PM (noon) always
+Priority order: explicit keyword > Hindi context word > numeric default.
+1. If "am" or "pm" appears explicitly as a standalone word in the text → ALWAYS honor it, overrides everything else.
+   "Tomorrow AM 2 baje" → 2:00 AM | "Tomorrow PM 2 baje" → 14:00 (2 PM)
+2. If no explicit am/pm, use Hindi context words:
+   - "subah" → AM | "dopahar" → PM | "shaam"/"raat" → PM
+3. If no context at all, apply numeric defaults for bje/baje/bajey:
+  - Hours 1–7  → PM (afternoon/evening)
+  - Hours 8–11 → AM (morning)
+  - Hour 12    → PM (noon)
   - Hour 0     → AM (midnight)
 
 ## OUTPUT RULES

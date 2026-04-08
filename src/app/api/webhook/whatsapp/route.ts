@@ -337,44 +337,149 @@ export async function POST(req: NextRequest) {
 
     // ─── HANDLE PENDING MULTI-REMINDER CLARIFICATION ─────────────────
     // User answered "Kal shaam" / "Tomorrow PM" after being asked for day/AM-PM context.
-    // Combine their answer with the stored reminder items and set them all.
+    // Incrementally collect day + AM/PM — only set reminders once both are known.
     if (ctx?.pending_action === 'awaiting_multi_reminder_clarify' && ctx?.pending_multi_reminder) {
       const pmr = ctx.pending_multi_reminder as PendingMultiReminder
       const clarification = processedMessage.trim()
-      await clearPendingAction(user.id)
 
-      for (const item of pmr.items) {
-        const combinedText = `${clarification} ${item.dateTimeText}`
+      // Abort: if message looks like a command/delete intent, clear state and fall through
+      const looksLikeCommand = /\b(delete|hatao|mitao|cancel|nahi|nhi|no|stop|band|chodo|task|list|reminder|document)\b/i.test(clarification)
+      if (looksLikeCommand) {
+        await clearPendingAction(user.id)
+        // Fall through to normal intent classification below
+      } else {
+        // Extract explicit period from clarification ("Tomorrow AM" → "am", "Kal shaam" → "pm")
+        const clarifLower = clarification.toLowerCase()
+        const clarifHasAm = /\b(am|subah|morning)\b/.test(clarifLower)
+        const clarifHasPm = /\b(pm|shaam|sham|raat|evening|night|afternoon|dopahar)\b/.test(clarifLower)
+        const explicitPeriod = clarifHasAm ? 'am' : (clarifHasPm ? 'pm' : '')
+
+        // Merge clarification into each stored item's dateTimeText.
+        // If we have an explicit period, replace "baje" with it so the parser
+        // captures it directly (e.g. "Tomorrow AM 2:00 am" → unambiguous 2 AM).
+        const updatedItems = pmr.items.map(item => {
+          const fixedTime = explicitPeriod
+            ? item.dateTimeText.replace(/\b(baje|bje|bajey)\b/gi, explicitPeriod)
+            : item.dateTimeText
+          return { ...item, dateTimeText: `${clarification} ${fixedTime}` }
+        })
+        const sampleText = updatedItems[0]?.dateTimeText ?? clarification
+
+        const hasDay  = /\b(kal|aaj|today|tomorrow|parso|monday|tuesday|wednesday|thursday|friday|saturday|sunday|som|mangal|budh|guru|shukra|shani|ravi|\d{1,2}\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec))\b/i.test(sampleText)
+        const hasAmPm = /\b(am|pm|subah|dopahar|shaam|sham|raat|morning|evening|night|afternoon)\b/i.test(sampleText)
+
+        if (!hasDay) {
+          // Still missing day — save updated items and ask for day only
+          await updateContext(user.id, {
+            pending_action: 'awaiting_multi_reminder_clarify',
+            pending_multi_reminder: { items: updatedItems, originalMessage: pmr.originalMessage },
+          })
+          await sendWhatsAppMessage({
+            to: cleanFromPhone,
+            message: lang === 'hi'
+              ? `📅 Kaunse din ke liye? Bas "Aaj" ya "Kal" bolein 😊`
+              : `📅 Which day? Just say "Today" or "Tomorrow" 😊`
+          })
+          return NextResponse.json({ ok: true })
+        }
+
+        if (!hasAmPm) {
+          // Has day but missing AM/PM — save updated items and ask for AM/PM only
+          await updateContext(user.id, {
+            pending_action: 'awaiting_multi_reminder_clarify',
+            pending_multi_reminder: { items: updatedItems, originalMessage: pmr.originalMessage },
+          })
+          await sendWhatsAppMessage({
+            to: cleanFromPhone,
+            message: lang === 'hi'
+              ? `🌅 Subah ke liye (AM) ya Shaam ke liye (PM)? 😊`
+              : `🌅 Morning (AM) or Evening (PM)? 😊`
+          })
+          return NextResponse.json({ ok: true })
+        }
+
+        // Both day and AM/PM present — set all reminders
+        await clearPendingAction(user.id)
+        for (const item of updatedItems) {
+          await handleSetReminder({
+            userId: user.id,
+            phone: cleanFromPhone,
+            language: lang,
+            message: item.dateTimeText,
+            dateTimeText: item.dateTimeText,
+            reminderTitle: item.title,
+          })
+        }
+        return NextResponse.json({ ok: true })
+      }
+    }
+
+    // ─── HANDLE PENDING SINGLE REMINDER CLARIFICATION ────────────────
+    // User answered "Kal subah" / "Tomorrow morning" after being asked for day/AM-PM context.
+    // Incrementally collect day + AM/PM — only set reminder once both are known.
+    if (ctx?.pending_action === 'awaiting_reminder_clarify' && ctx?.pending_reminder) {
+      const pr = ctx.pending_reminder as PendingReminderClarify
+      const clarification = processedMessage.trim()
+
+      // Abort: if message looks like a command/delete intent, clear state and fall through
+      const looksLikeCommand = /\b(delete|hatao|mitao|cancel|nahi|nhi|no|stop|band|chodo|task|list|document)\b/i.test(clarification)
+      if (looksLikeCommand) {
+        await clearPendingAction(user.id)
+        // Fall through to normal intent classification below
+      } else {
+        // Extract explicit period from clarification and replace "baje" so parser sees it directly
+        const clarifLower2 = clarification.toLowerCase()
+        const clarifHasAm2 = /\b(am|subah|morning)\b/.test(clarifLower2)
+        const clarifHasPm2 = /\b(pm|shaam|sham|raat|evening|night|afternoon|dopahar)\b/.test(clarifLower2)
+        const explicitPeriod2 = clarifHasAm2 ? 'am' : (clarifHasPm2 ? 'pm' : '')
+        const fixedTime2 = explicitPeriod2
+          ? pr.dateTimeText.replace(/\b(baje|bje|bajey)\b/gi, explicitPeriod2)
+          : pr.dateTimeText
+        const combinedText = `${clarification} ${fixedTime2}`
+
+        const hasDay  = /\b(kal|aaj|today|tomorrow|parso|monday|tuesday|wednesday|thursday|friday|saturday|sunday|som|mangal|budh|guru|shukra|shani|ravi|\d{1,2}\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec))\b/i.test(combinedText)
+        const hasAmPm = /\b(am|pm|subah|dopahar|shaam|sham|raat|morning|evening|night|afternoon)\b/i.test(combinedText)
+
+        if (!hasDay) {
+          await updateContext(user.id, {
+            pending_action: 'awaiting_reminder_clarify',
+            pending_reminder: { ...pr, dateTimeText: combinedText },
+          })
+          await sendWhatsAppMessage({
+            to: cleanFromPhone,
+            message: lang === 'hi'
+              ? `📅 Kaunse din ke liye? Bas "Aaj" ya "Kal" bolein 😊`
+              : `📅 Which day? Just say "Today" or "Tomorrow" 😊`
+          })
+          return NextResponse.json({ ok: true })
+        }
+
+        if (!hasAmPm) {
+          await updateContext(user.id, {
+            pending_action: 'awaiting_reminder_clarify',
+            pending_reminder: { ...pr, dateTimeText: combinedText },
+          })
+          await sendWhatsAppMessage({
+            to: cleanFromPhone,
+            message: lang === 'hi'
+              ? `🌅 Subah ke liye (AM) ya Shaam ke liye (PM)? 😊`
+              : `🌅 Morning (AM) or Evening (PM)? 😊`
+          })
+          return NextResponse.json({ ok: true })
+        }
+
+        // Both present — set the reminder
+        await clearPendingAction(user.id)
         await handleSetReminder({
           userId: user.id,
           phone: cleanFromPhone,
           language: lang,
           message: combinedText,
           dateTimeText: combinedText,
-          reminderTitle: item.title,
+          reminderTitle: pr.reminderTitle,
         })
+        return NextResponse.json({ ok: true })
       }
-      return NextResponse.json({ ok: true })
-    }
-
-    // ─── HANDLE PENDING SINGLE REMINDER CLARIFICATION ────────────────
-    // User answered "Kal subah" / "Tomorrow morning" after being asked for day/AM-PM context.
-    // Combine their answer with the stored time and set the reminder.
-    if (ctx?.pending_action === 'awaiting_reminder_clarify' && ctx?.pending_reminder) {
-      const pr = ctx.pending_reminder as PendingReminderClarify
-      const clarification = processedMessage.trim()
-      await clearPendingAction(user.id)
-
-      const combinedText = `${clarification} ${pr.dateTimeText}`
-      await handleSetReminder({
-        userId: user.id,
-        phone: cleanFromPhone,
-        language: lang,
-        message: combinedText,
-        dateTimeText: combinedText,
-        reminderTitle: pr.reminderTitle,
-      })
-      return NextResponse.json({ ok: true })
     }
 
     // ─── HANDLE PENDING ACTIONS (e.g., awaiting document label) ─
@@ -513,7 +618,17 @@ export async function POST(req: NextRequest) {
 
             // ALWAYS prefer LLM items — they extract real titles like "doctor appointment"
             // Only use fallback if LLM gave no usable items at all
-            const reminderItems = llmItems.length > 0 ? llmItems : fallbackItems
+            const rawItems = llmItems.length > 0 ? llmItems : fallbackItems
+
+            // Deduplicate by normalized dateTimeText — prevents LLM from inventing duplicate
+            // times when user says "5 reminders" but only provides 4 distinct times.
+            const seenTimes = new Set<string>()
+            const reminderItems = rawItems.filter(item => {
+              const key = item.dateTimeText.toLowerCase().replace(/\s+/g, ' ').trim()
+              if (seenTimes.has(key)) return false
+              seenTimes.add(key)
+              return true
+            })
 
             // Pre-loop ambiguity check: if original message has no explicit day or AM/PM,
             // send ONE clarification message instead of N individual ones.
