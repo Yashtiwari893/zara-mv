@@ -25,7 +25,7 @@ import { createErrorResponse } from '@/lib/infrastructure/errorHandler'
 import { validatePhone, validatePlainText } from '@/lib/infrastructure/inputValidator'
 import { retryWithExponentialBackoff } from '@/lib/infrastructure/errorHandler'
 import { getContext, updateContext, addToHistory, clearPendingAction } from '@/lib/infrastructure/sessionContext'
-import type { PendingDelete } from '@/lib/infrastructure/sessionContext'
+import type { PendingDelete, PendingMultiReminder, PendingReminderClarify } from '@/lib/infrastructure/sessionContext'
 import type { Language } from '@/types'
 
 const supabaseAdmin = getSupabaseClient()
@@ -335,6 +335,48 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
+    // ─── HANDLE PENDING MULTI-REMINDER CLARIFICATION ─────────────────
+    // User answered "Kal shaam" / "Tomorrow PM" after being asked for day/AM-PM context.
+    // Combine their answer with the stored reminder items and set them all.
+    if (ctx?.pending_action === 'awaiting_multi_reminder_clarify' && ctx?.pending_multi_reminder) {
+      const pmr = ctx.pending_multi_reminder as PendingMultiReminder
+      const clarification = processedMessage.trim()
+      await clearPendingAction(user.id)
+
+      for (const item of pmr.items) {
+        const combinedText = `${clarification} ${item.dateTimeText}`
+        await handleSetReminder({
+          userId: user.id,
+          phone: cleanFromPhone,
+          language: lang,
+          message: combinedText,
+          dateTimeText: combinedText,
+          reminderTitle: item.title,
+        })
+      }
+      return NextResponse.json({ ok: true })
+    }
+
+    // ─── HANDLE PENDING SINGLE REMINDER CLARIFICATION ────────────────
+    // User answered "Kal subah" / "Tomorrow morning" after being asked for day/AM-PM context.
+    // Combine their answer with the stored time and set the reminder.
+    if (ctx?.pending_action === 'awaiting_reminder_clarify' && ctx?.pending_reminder) {
+      const pr = ctx.pending_reminder as PendingReminderClarify
+      const clarification = processedMessage.trim()
+      await clearPendingAction(user.id)
+
+      const combinedText = `${clarification} ${pr.dateTimeText}`
+      await handleSetReminder({
+        userId: user.id,
+        phone: cleanFromPhone,
+        language: lang,
+        message: combinedText,
+        dateTimeText: combinedText,
+        reminderTitle: pr.reminderTitle,
+      })
+      return NextResponse.json({ ok: true })
+    }
+
     // ─── HANDLE PENDING ACTIONS (e.g., awaiting document label) ─
     if (ctx?.pending_action === 'awaiting_label') {
       const rawLabel = processedMessage.trim()
@@ -479,6 +521,10 @@ export async function POST(req: NextRequest) {
             const hasExplicitAmPm = /\b(am|pm|subah|dopahar|shaam|raat|morning|evening|night|afternoon)\b/i.test(processedMessage)
 
             if (!hasExplicitDay || !hasExplicitAmPm) {
+              await updateContext(user.id, {
+                pending_action: 'awaiting_multi_reminder_clarify',
+                pending_multi_reminder: { items: reminderItems, originalMessage: processedMessage } as PendingMultiReminder,
+              })
               await sendWhatsAppMessage({
                 to: cleanFromPhone,
                 message: abuseWarning + (lang === 'hi'

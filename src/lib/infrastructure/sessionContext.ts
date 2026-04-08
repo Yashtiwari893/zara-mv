@@ -15,6 +15,17 @@ export interface PendingDelete {
   confirmMessage?: string   // human-readable summary shown to user before confirmation
 }
 
+export interface PendingMultiReminder {
+  items: Array<{ title: string; dateTimeText: string }>
+  originalMessage: string
+}
+
+export interface PendingReminderClarify {
+  dateTimeText: string
+  reminderTitle?: string
+  originalMessage: string
+}
+
 export interface SessionContext {
   last_intent?: string
   last_document_query?: string
@@ -27,6 +38,8 @@ export interface SessionContext {
   doc_type?: string
   last_referenced_id?: string
   conversation_history?: Array<{ role: string; content: string; ts: number }>
+  pending_multi_reminder?: PendingMultiReminder
+  pending_reminder?: PendingReminderClarify
 }
 
 const MAX_HISTORY = 12          // 6 user + 6 assistant turns
@@ -127,12 +140,14 @@ export async function clearPendingAction(userId: string): Promise<void> {
           user_id: userId,
           context: {
             ...existing,
-            pending_action:  undefined,
-            pending_delete:  undefined,
-            document_id:     undefined,
-            document_path:   undefined,
-            drive_file_id:   undefined,
-            doc_type:        undefined,
+            pending_action:          undefined,
+            pending_delete:          undefined,
+            pending_multi_reminder:  undefined,
+            pending_reminder:        undefined,
+            document_id:             undefined,
+            document_path:           undefined,
+            drive_file_id:           undefined,
+            doc_type:                undefined,
           },
         },
         { onConflict: 'user_id' }

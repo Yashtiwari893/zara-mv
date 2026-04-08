@@ -8,6 +8,7 @@ import {
   reminderSet, reminderSnoozed, errorMessage,
 } from '@/lib/whatsapp/templates'
 import { truncateWhatsAppMessage } from '@/lib/whatsapp/message'
+import { updateContext } from '@/lib/infrastructure/sessionContext'
 import type { Language } from '@/types'
 import { APP } from '@/config'
 
@@ -76,6 +77,10 @@ export async function handleSetReminder(params: {
 
   // Ask clarification when day or AM/PM context is missing for one-time reminders.
   if (parsed && (parsed.isAmbiguous || parsed.missingAmPm) && !parsed.isRecurring) {
+    await updateContext(userId, {
+      pending_action: 'awaiting_reminder_clarify',
+      pending_reminder: { dateTimeText: textToParse, reminderTitle, originalMessage: message },
+    })
     await sendWhatsAppMessage({
       to: phone,
       message: prefix + (language === 'hi'
