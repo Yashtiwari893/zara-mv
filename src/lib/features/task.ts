@@ -157,8 +157,8 @@ export async function handleAddTask(params: {
     p_workspace_id: workspaceId ?? null
   })
 
-  if (listErr) {
-    console.error('[task] get_or_create_list error:', listErr)
+  if (listErr || !listId) {
+    console.error('[task] get_or_create_list error:', listErr || 'returned null')
     await sendWhatsAppMessage({ to: phone, message: errorMessage(language) })
     return
   }
@@ -194,8 +194,17 @@ export async function handleListTasks(params: {
   
   // ── 1. GENERIC SEARCH HANDLING ──────────────────────────────
   // If user says "tasks" or "list", show them all available lists
-  const cleanedListName = params.listName?.toLowerCase().replace(/\b(list|lists|dikhao|dekho|show)\b/gi, '').trim() || ''
-  if (isGenericSearch || !params.listName || !cleanedListName || ['task', 'tasks', 'list', 'lists', 'all', 'sab', ''].includes(cleanedListName)) {
+  const cleanedListName = params.listName?.toLowerCase()
+    .replace(/\b(list|lists|task|tasks|dikha|dikhao|dekho|show|bhej|send|de|do|re|zara|please|plz|kr|karo)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim() || ''
+
+  if (
+    isGenericSearch
+    || !params.listName
+    || !cleanedListName
+    || ['task', 'tasks', 'list', 'lists', 'all', 'sab', 'sabhi', ''].includes(cleanedListName)
+  ) {
     return await handleListAllLists({ userId, phone, language })
   }
 
