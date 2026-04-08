@@ -7,6 +7,25 @@ import { AI_MODELS, APP } from '@/config'
 
 const DEFAULT_TZ = APP.DEFAULT_TIMEZONE
 
+const HINDI_TIME_WORDS: Record<string, string> = {
+  ek: '1',
+  do: '2',
+  teen: '3',
+  chaar: '4',
+  char: '4',
+  paanch: '5',
+  panch: '5',
+  chhe: '6',
+  cheh: '6',
+  saat: '7',
+  aath: '8',
+  nau: '9',
+  das: '10',
+  gyarah: '11',
+  baraah: '12',
+  baarah: '12',
+}
+
 // ─── TYPES ────────────────────────────────────────────────────
 export interface ParsedDateTime {
   date: Date | null
@@ -18,6 +37,7 @@ export interface ParsedDateTime {
   isAmbiguous: boolean
   missingDay: boolean
   missingAmPm: boolean
+  missingTime: boolean
 }
 
 const EMPTY: ParsedDateTime = {
@@ -30,17 +50,29 @@ const EMPTY: ParsedDateTime = {
   isAmbiguous: false,
   missingDay: false,
   missingAmPm: false,
+  missingTime: false,
 }
 
 function getAmbiguityFlags(text: string) {
   const hasExplicitDay = /\b(kal|aaj|today|tomorrow|parso|monday|tuesday|wednesday|thursday|friday|saturday|sunday|som|mangal|budh|guru|shukra|shani|ravi|\d{1,2}\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)|\d{1,2}\/\d{1,2})\b/i.test(text)
   const hasExplicitAmPm = /\b(am|pm|subah|dopahar|shaam|raat|morning|evening|night|afternoon)\b/i.test(text)
+  const hasExplicitTime = /\b(?:\d{1,2}|ek|do|teen|chaar|char|paanch|panch|chhe|cheh|saat|aath|nau|das|gyarah|baraah|baarah)(?::\d{2})?\s*(?:am|pm|bje|baje|bajey)?\b/i.test(text)
 
   return {
-    isAmbiguous: !hasExplicitDay || !hasExplicitAmPm,
+    isAmbiguous: !hasExplicitDay || !hasExplicitAmPm || !hasExplicitTime,
     missingDay: !hasExplicitDay,
     missingAmPm: !hasExplicitAmPm,
+    missingTime: !hasExplicitTime,
   }
+}
+
+function normalizeHindiTimeText(text: string): string {
+  return text
+    .replace(/\b(prso|praso|paro|paro\s*se)\b/gi, 'parso')
+    .replace(
+      /\b(ek|do|teen|chaar|char|paanch|panch|chhe|cheh|saat|aath|nau|das|gyarah|baraah|baarah)\b(?=\s*(?:bje|baje|bajey|am|pm)\b)/gi,
+      (match) => HINDI_TIME_WORDS[match.toLowerCase()] ?? match
+    )
 }
 
 // ─── VALID RECURRENCE VALUES ──────────────────────────────────
@@ -213,13 +245,10 @@ function quickParse(text: string): ParsedDateTime | null {
 
   if (oneShotMatch) {
     const dayMarker = oneShotMatch[1] ? oneShotMatch[1].toLowerCase() : ''
-    const hour = parseInt(oneShotMatch[2], 10)
-    const min = oneShotMatch[3] ? parseInt(oneShotMatch[3], 10) : 0
-    const period = oneShotMatch[4].toLowerCase()
 
     // Extract properly using the core util
     // Construct a pseudo-match array for extractTime: [full, hour, min, period]
-    const pseudoMatch: RegExpMatchArray = [oneShotMatch[0], oneShotMatch[2], oneShotMatch[3], oneShotMatch[4]] as any
+    const pseudoMatch = [oneShotMatch[0], oneShotMatch[2], oneShotMatch[3], oneShotMatch[4]] as unknown as RegExpMatchArray
     const timeStr = extractTime(pseudoMatch, lower)
     // Create date and force it to be IST by calculating the offset
     const targetDate = new Date(now)
@@ -316,9 +345,12 @@ Expression: "${text}"
 
 Hindi/Hinglish reference:
 - kal = tomorrow | aaj = today | parso = day after tomorrow | narsoo = 3 days from now
+- prso / paro / praso = parso (common misspellings)
 - ek = 1 (Hindi number word) — IGNORE "ek" when it means "a/one" (e.g., "ek reminder set karo").
+- do = 2 | teen = 3 | chaar/char = 4 | paanch/panch = 5 | chhe/cheh = 6 | saat = 7 | aath = 8 | nau = 9 | das = 10 | gyarah = 11 | baraah/baarah = 12
   The TIME number is ALWAYS the digit immediately before bje/baje/bajey/am/pm.
   Example: "mera ek reminder 1 bje" → time is 1 (bje) = 13:00, NOT 11 or 2.
+- Examples: "kal ek bje" → tomorrow 1 PM, "parso do bje" → day after tomorrow 2 PM, "kal 1 pm" → tomorrow 1 PM, "prso 2 pm" → day after tomorrow 2 PM
 - subah = morning (9 AM) | dopahar = afternoon (2 PM) | shaam = evening (6 PM) | raat = night (9 PM)
 - bje / baje / bajey = o'clock (Indian time marker)
 - somwar=Monday, mangalwar=Tuesday, budhwar=Wednesday, guruwar=Thursday, shukrawar=Friday, shaniwar=Saturday, raviwar=Sunday
@@ -388,7 +420,8 @@ export async function parseDateTime(
   if (!text || typeof text !== 'string' || !text.trim()) return EMPTY
 
   const cleanText = text.trim()
-  const ambiguityFlags = getAmbiguityFlags(cleanText)
+  const normalizedText = normalizeHindiTimeText(cleanText.toLowerCase())
+  const ambiguityFlags = getAmbiguityFlags(normalizedText)
 
   // ── GUARDRAIL 2: Text too long ────────────────────────────
   if (cleanText.length > 300) {
@@ -408,7 +441,7 @@ export async function parseDateTime(
   })()
 
   // ── Step 1: Try local quick parse first (no API cost) ──────
-  const quick = quickParse(cleanText)
+  const quick = quickParse(normalizeHindiTimeText(cleanText))
   if (quick && quick.confidence >= 0.9) return { ...quick, ...ambiguityFlags }
 
   // ── Step 2: Groq NLU parse ─────────────────────────────────

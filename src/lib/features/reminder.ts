@@ -75,8 +75,8 @@ export async function handleSetReminder(params: {
     return
   }
 
-  // Ask clarification when day or AM/PM context is missing for one-time reminders.
-  if (parsed && (parsed.isAmbiguous || parsed.missingAmPm) && !parsed.isRecurring) {
+  // Ask clarification when day, AM/PM, or clock time is missing for one-time reminders.
+  if (parsed && (parsed.isAmbiguous || parsed.missingDay || parsed.missingAmPm || parsed.missingTime) && !parsed.isRecurring) {
     await updateContext(userId, {
       pending_action: 'awaiting_reminder_clarify',
       pending_reminder: { dateTimeText: textToParse, reminderTitle, originalMessage: message },
@@ -84,8 +84,8 @@ export async function handleSetReminder(params: {
     await sendWhatsAppMessage({
       to: phone,
       message: prefix + (language === 'hi'
-        ? '⏰ Reminder set karne ke liye thoda aur detail chahiye:\n\n_Kaunse din ke liye? (Aaj/Kal)_\n_Subah ke liye ya Shaam ke liye? (AM/PM)_\n\nJaise: "Kal subah 9 baje" ya "Aaj shaam 7 baje" 😊'
-        : '⏰ I need a bit more info to set your reminder:\n\n_Which day? (Today/Tomorrow)_\n_Morning or Evening? (AM/PM)_\n\nTry: "Tomorrow evening 7pm" or "Today morning 9am" 😊')
+        ? '⏰ Reminder set karne ke liye thoda aur detail chahiye:\n\n_Kaunse din ke liye? (Aaj/Kal)_\n_Kaunsa time? (Jaise 9 baje / 2:00 pm)_\n_Subah ke liye ya Shaam ke liye? (AM/PM)_\n\nJaise: "Kal subah 9 baje" ya "Aaj shaam 7 baje" 😊'
+        : '⏰ I need a bit more info to set your reminder:\n\n_Which day? (Today/Tomorrow)_\n_What time? (Like 9am / 2:00 pm)_\n_Morning or Evening? (AM/PM)_\n\nTry: "Tomorrow evening 7pm" or "Today morning 9am" 😊')
     })
     return
   }

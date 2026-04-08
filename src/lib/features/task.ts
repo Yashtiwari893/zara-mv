@@ -58,16 +58,33 @@ export async function handleAddTask(params: {
   prefix?: string
 }) {
   const { userId, phone, language, listName, workspaceId, prefix = '' } = params
+  const normalized = normalizeListName(listName)
+  const normalizedLower = normalized.toLowerCase()
 
   // ── Multi-item Parsing ──────────────────────────────────────
   const items = params.taskContent
     .split(/[\n,،\-\*•]+/) // newline, comma, dash, bullet
     .map(i => i.trim())
+    .filter(i => {
+      const lower = i.toLowerCase().trim()
+      if (!lower) return false
+
+      // Ignore command scaffolding lines from messages like:
+      // "List bna", "Grocery krk", "create list".
+      if (/^(list|task)\s*(bna|banao|bana|banado|create|karo|krk)\b/i.test(lower)) return false
+      if (/^create\s*list\b/i.test(lower)) return false
+      if (/^(make|banado|banao)\s*(a\s*)?list\b/i.test(lower)) return false
+
+      // Ignore list-name setup fragments (not actual items).
+      if (lower === normalizedLower) return false
+      if (lower === `${normalizedLower} krk` || lower === `${normalizedLower} karke`) return false
+      if (lower === `${normalizedLower} list`) return false
+
+      return true
+    })
     .filter(i => i.length > 2) // avoid tiny fragments
 
   if (items.length > 1) {
-    const normalized = normalizeListName(listName)
-
     // Get or create the list — if this fails, abort with error (never show fake success)
     const { data: listId, error: listRpcErr } = await supabase.rpc('get_or_create_list', {
       p_user_id:      userId,
