@@ -45,10 +45,6 @@ GET_BRIEFING, HELP, UNKNOWN
   "add kar de" (no subject) → UNKNOWN (incomplete instruction)
   "kuch bhi add karo" → UNKNOWN (no specific item given)
 
-- Comma-separated multi-item add messages must preserve ALL items in taskContent.
-  If one word looks like a list name (grocery, shopping, general), set it as listName and keep the rest in taskContent.
-  Never drop the remaining comma-separated items.
-
 ## MULTI-REMINDER SUPPORT
 If user sets multiple reminders in one message, set:
   isMultiReminder: true
@@ -84,9 +80,6 @@ Message: "Mere reminders dikhao"
 
 Message: "Grocery mein doodh add karo"
 → {"intent":"ADD_TASK","confidence":0.95,"extractedData":{"taskContent":"doodh","listName":"grocery"}}
-
-Message: "Milk, cow, grocery, buffalo"
-→ {"intent":"ADD_TASK","confidence":0.95,"extractedData":{"taskContent":"Milk, cow, buffalo","listName":"grocery"}}
 
 Message: "Meri grocery list dikhao"
 → {"intent":"LIST_TASKS","confidence":0.95,"extractedData":{"listName":"grocery"}}

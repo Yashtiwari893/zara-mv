@@ -293,9 +293,7 @@ export async function POST(req: NextRequest) {
       'dhanyawad', 'shukriya', 'shukriyaa', 'wow', 'good', 'great', 'nice',
       'perfect', 'bilkul', 'acha', 'accha', 'achha', 'theek hai', 'thik hai',
       'hi', 'hello', 'hey', 'hlo', 'hii', 'helo', 'namaste', 'namaskar',
-      'kem cho', 'kaise ho', 'kya haal hai', 'sup',
-      'haa', 'ha', 'han', 'haan', 'bata', 'batao', 'achha bata', 'theek bata',
-      'sach mein', 'really', 'aur', 'phir', 'toh', 'to'
+      'kem cho', 'kaise ho', 'kya haal hai', 'sup'
     ])
 
     let intentResult;
@@ -588,8 +586,7 @@ export async function POST(req: NextRequest) {
 
         case 'HELP': {
           // Don't send full help menu for greetings or very short messages
-          const isGreeting = /^(hi|hey|hello|hlo|hii|helo|namaste|namaskar|kem cho|kaise ho|sup|haa|ha|han|haan)$/i.test(lowerMessage)
-            || (lowerMessage.length < 30 && /^(bata|batao|aur batao|phir|toh bata|to bata|sach mein|really|acha|achha)/.test(lowerMessage))
+          const isGreeting = /^(hi|hey|hello|hlo|hii|helo|namaste|namaskar|kem cho|kaise ho|sup)$/i.test(lowerMessage)
           if (isGreeting) {
             // Route to autoResponder for warm greeting instead
             isHandled = false

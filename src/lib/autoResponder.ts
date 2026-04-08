@@ -3,11 +3,11 @@
 // v2.0 — Professional Edition: improved response quality, better RAG context, retry logic
 
 import { getSupabaseClient } from '@/lib/infrastructure/database'
+import { getGroqClient } from '@/lib/ai/clients'
 import { sendWhatsAppMessage } from '@/lib/whatsapp/client'
 import { getContext } from '@/lib/infrastructure/sessionContext'
 import { AI_MODELS, APP, WHATSAPP_AUTH_TOKEN, WHATSAPP_ORIGIN } from '@/config'
 import type { AutoResponseResult } from '@/types'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 
 // ─── Constants ────────────────────────────────────────────────
 
@@ -273,29 +273,21 @@ async function generateLlmReply(params: GenerateLlmReplyParams): Promise<string 
   }, LLM_TIMEOUT_MS)
 
   try {
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
-
-    const chat = model.startChat({
-      history: history.map(h => ({
-        role: h.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: h.content }]
-      })),
-      systemInstruction: systemPrompt,
-      generationConfig: {
+    const completion = await getGroqClient().chat.completions.create(
+      {
+        model: AI_MODELS.AUTO_RESPONDER,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...history,
+          { role: 'user', content: finalUserContent },
+        ],
         temperature: GROQ_TEMPERATURE,
-        maxOutputTokens: APP.MAX_REPLY_TOKENS,
-      }
-    })
+        max_tokens:  APP.MAX_REPLY_TOKENS,
+      },
+      { signal: controller.signal }
+    )
 
-    const result = await Promise.race([
-      chat.sendMessage(finalUserContent),
-      new Promise<never>((_, reject) => {
-        controller.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true })
-      })
-    ])
-
-    const raw = result.response.text()?.trim()
+    const raw = completion.choices[0]?.message?.content?.trim()
     if (!raw || raw.length < 2) return null
 
     return raw
@@ -435,7 +427,7 @@ export async function generateAutoResponse(
 
   } catch (err: unknown) {
     if (typeof err === 'object' && err !== null && (err as { status?: number }).status === 429) {
-      console.warn('[autoResponder] Gemini rate limit hit (429)')
+      console.warn('[autoResponder] Groq rate limit hit (429)')
       return { success: false, error: 'AI service busy — please try again in a moment' }
     }
 
