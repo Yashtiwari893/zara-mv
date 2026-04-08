@@ -15,6 +15,9 @@ export interface ParsedDateTime {
   recurrenceTime: string | null   // "09:00" HH:MM 24-hr format
   confidence: number              // 0-1
   humanReadable: string           // "Tomorrow at 11:00 AM"
+  isAmbiguous: boolean
+  missingDay: boolean
+  missingAmPm: boolean
 }
 
 const EMPTY: ParsedDateTime = {
@@ -24,6 +27,20 @@ const EMPTY: ParsedDateTime = {
   recurrenceTime: null,
   confidence: 0,
   humanReadable: '',
+  isAmbiguous: false,
+  missingDay: false,
+  missingAmPm: false,
+}
+
+function getAmbiguityFlags(text: string) {
+  const hasExplicitDay = /\b(kal|aaj|today|tomorrow|parso|monday|tuesday|wednesday|thursday|friday|saturday|sunday|som|mangal|budh|guru|shukra|shani|ravi|\d{1,2}\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)|\d{1,2}\/\d{1,2})\b/i.test(text)
+  const hasExplicitAmPm = /\b(am|pm|subah|dopahar|shaam|raat|morning|evening|night|afternoon)\b/i.test(text)
+
+  return {
+    isAmbiguous: !hasExplicitDay || !hasExplicitAmPm,
+    missingDay: !hasExplicitDay,
+    missingAmPm: !hasExplicitAmPm,
+  }
 }
 
 // ─── VALID RECURRENCE VALUES ──────────────────────────────────
@@ -300,8 +317,8 @@ Hindi/Hinglish reference:
 
 ## CRITICAL AM/PM RULES (Indian Context — apply strictly)
 When user says a number with bje/baje/bajey or no period marker:
-  - Hours 1–6  → PM (afternoon/evening) UNLESS "subah" is present → then AM
-  - Hours 7–11 → AM (morning) UNLESS "shaam" or "raat" is present → then PM
+  - Hours 1–7  → PM (afternoon/evening) UNLESS "subah" is present → then AM
+  - Hours 8–11 → AM (morning) UNLESS "shaam" or "raat" is present → then PM
   - Hour 12    → PM (noon) always
   - Hour 0     → AM (midnight)
 
@@ -357,6 +374,7 @@ export async function parseDateTime(
   if (!text || typeof text !== 'string' || !text.trim()) return EMPTY
 
   const cleanText = text.trim()
+  const ambiguityFlags = getAmbiguityFlags(cleanText)
 
   // ── GUARDRAIL 2: Text too long ────────────────────────────
   if (cleanText.length > 300) {
@@ -377,7 +395,7 @@ export async function parseDateTime(
 
   // ── Step 1: Try local quick parse first (no API cost) ──────
   const quick = quickParse(cleanText)
-  if (quick && quick.confidence >= 0.9) return quick
+  if (quick && quick.confidence >= 0.9) return { ...quick, ...ambiguityFlags }
 
   // ── Step 2: Groq NLU parse ─────────────────────────────────
   const now = new Date()
@@ -482,6 +500,7 @@ export async function parseDateTime(
       recurrenceTime,
       confidence,
       humanReadable,
+      ...ambiguityFlags,
     }
 
   } catch (err: unknown) {

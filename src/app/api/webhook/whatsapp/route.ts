@@ -28,6 +28,7 @@ import { getContext, updateContext, addToHistory } from '@/lib/infrastructure/se
 import type { Language } from '@/types'
 
 const supabaseAdmin = getSupabaseClient()
+const recentlyProcessed = new Map<string, number>()
 
 // BUG FIX: Proper MIME type resolver - was hardcoded 'image/jpeg' before
 function resolveMimeType(rawMime?: string | null, subType?: string | null): string {
@@ -147,6 +148,21 @@ export async function POST(req: NextRequest) {
 
     // ─── PARSE & VALIDATE WEBHOOK PAYLOAD ──────────────────
     const { phone, to, message, buttonId, mediaUrl, mediaType, mimeType, subType, messageId, name, event } = parseWebhookPayload(body)
+
+    // ─── IN-MEMORY DEDUP (rapid duplicate deliveries in same instance) ───
+    const now = Date.now()
+    if (recentlyProcessed.has(messageId)) {
+      logger.info('⚡ In-memory duplicate skip', { messageId })
+      return NextResponse.json({ ok: true })
+    }
+    recentlyProcessed.set(messageId, now)
+    // Cleanup old entries (keep map bounded)
+    if (recentlyProcessed.size > 500) {
+      const oldest = [...recentlyProcessed.entries()]
+        .sort((a, b) => a[1] - b[1])
+        .slice(0, 100)
+      oldest.forEach(([k]) => recentlyProcessed.delete(k))
+    }
 
     // ─── VALIDATE REQUIRED FIELDS ──────────────────────────
     if (!phone || !messageId) {
@@ -406,6 +422,23 @@ export async function POST(req: NextRequest) {
             // ALWAYS prefer LLM items — they extract real titles like "doctor appointment"
             // Only use fallback if LLM gave no usable items at all
             const reminderItems = llmItems.length > 0 ? llmItems : fallbackItems
+
+            // Pre-loop ambiguity check: if original message has no explicit day or AM/PM,
+            // send ONE clarification message instead of N individual ones.
+            const hasExplicitDay = /\b(kal|aaj|today|tomorrow|parso|monday|tuesday|wednesday|thursday|friday|saturday|sunday|som|mangal|budh|guru|shukra|shani|ravi|\d{1,2}\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)|\d{1,2}\/\d{1,2})\b/i.test(processedMessage)
+            const hasExplicitAmPm = /\b(am|pm|subah|dopahar|shaam|raat|morning|evening|night|afternoon)\b/i.test(processedMessage)
+
+            if (!hasExplicitDay || !hasExplicitAmPm) {
+              await sendWhatsAppMessage({
+                to: cleanFromPhone,
+                message: abuseWarning + (lang === 'hi'
+                  ? `⏰ ${reminderItems.length} reminders set karne ke liye thoda aur detail chahiye:\n\n_Kaunse din ke liye? (Aaj/Kal)_\n_Subah ke liye ya Shaam ke liye? (AM/PM)_\n\nJaise: "Kal shaam 2, 3, 4, 7 baje" ya "Aaj subah 9am, 11am" 😊`
+                  : `⏰ I need a bit more info to set your ${reminderItems.length} reminders:\n\n_Which day? (Today/Tomorrow)_\n_Morning or Evening? (AM/PM)_\n\nTry: "Tomorrow evening 2pm, 5pm, 8pm" or "Today morning 9am, 11am" 😊`)
+              })
+              isHandled = true
+              break
+            }
+
             const results: string[] = []
             for (const item of reminderItems) {
               await handleSetReminder({
@@ -540,13 +573,15 @@ export async function POST(req: NextRequest) {
             || deleteBulkKeywords.test(processedMessage)
             || !extractedData.listName
             || ['all', 'both', 'everything', 'sab', 'saari', 'saare'].includes((extractedData.listName || '').toLowerCase())
+          const hasReminderContext = /\b(reminder|reminders|yaad|alarm)\b/i.test(lowerMessage)
+          const finalIsBulkDelete = isBulkDelete && !hasReminderContext
           
           await handleDeleteList({
             userId: user.id,
             phone: cleanFromPhone,
             language: lang,
             listName: extractedData.listName || '',
-            isBulk: isBulkDelete,
+            isBulk: finalIsBulkDelete,
             prefix: abuseWarning
           })
           isHandled = true

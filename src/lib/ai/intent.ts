@@ -87,6 +87,11 @@ Example: "pahla 2 baje, dusra 3 baje, teesra 4 baje, chautha 7 baje" →
 - "list dikhao" without a specific list name → LIST_TASKS with isGenericSearch: true
 - "reminder list" / "reminders dikhao" → LIST_REMINDERS
 - "sab delete karo" in context of tasks → DELETE_LIST with isGenericSearch: true
+- "deletekar de sab" / "sab delete karo" WITHOUT context word → use conversation history:
+  - if previous context was list/task → DELETE_LIST
+  - if previous context was reminder → CANCEL_REMINDER
+  - if no clear context → UNKNOWN (ask what to delete)
+- NEVER delete both lists and reminders from one ambiguous "sab delete" message.
 - Questions ABOUT features/concepts ("what is X", "X kya hai") → UNKNOWN (auto-responder explains warmly)
 - Only capability/help asks ("what can you do", "help", "features batao") → HELP
 - Greeting ("hi", "hello", "hlo") → UNKNOWN (handled by auto-responder warmly)
@@ -138,6 +143,9 @@ Message: "delete my all reminders" / "saare reminder cancel karo" / "remove all 
 
 Message: "delete all reminder" / "sab reminder delete karo" / "cancel sab reminders"
 → {"intent":"CANCEL_REMINDER","confidence":1.0,"extractedData":{"isGenericSearch":true}}
+
+Message: "deletekar de sab" / "sab delete karo" (no list/reminder word)
+→ Use conversation history: list/task context => DELETE_LIST, reminder context => CANCEL_REMINDER, else => {"intent":"UNKNOWN","confidence":0.9,"extractedData":{}}
 
 Message: "10 min baad yaad dila dena"
 → {"intent":"SET_REMINDER","confidence":0.95,"extractedData":{"reminderTitle":"Reminder","dateTimeText":"10 min baad"}}
