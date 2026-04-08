@@ -313,6 +313,8 @@ export async function POST(req: NextRequest) {
     // ONLY override to FIND_DOCUMENT if no task/reminder context present (BUG-05 fix)
     const isTaskOrReminderContext = /\b(task|list|grocery|todo|kaam|saaman|reminder|reminders|yaad|tasks|lists)\b/i.test(lowerMessage)
     const isDeleteContext = /\b(task|list|grocery|todo|tasks)\b/i.test(lowerMessage)
+    const isVaultDelete = /\b(vault|documents?|docs?|files?)\b/i.test(lowerMessage)
+      && /\b(delete|hatao|mitao|remove|clear)\b/i.test(lowerMessage)
 
     // LIST_DOCUMENTS override — "sab documents", "meri files", "all docs"
     const isAllDocsQuery = /\b(sab|all|saari|meri)\s+(documents?|files?|photos?|pics?|docs?)\b/i.test(lowerMessage)
@@ -334,12 +336,23 @@ export async function POST(req: NextRequest) {
     // Deletion override — only for documents, not tasks/lists
     if (!isDeleteContext && (
       lowerMessage.includes('delete') || lowerMessage.includes('hatao') ||
-      lowerMessage.includes('mitao') || lowerMessage.includes('remove')
+      lowerMessage.includes('mitao') || lowerMessage.includes('remove') ||
+      lowerMessage.includes('vault delete') || lowerMessage.includes('vault hatao')
     )) {
-      if (intentResult.intent === 'UNKNOWN' || intentResult.confidence < 0.7) {
+      if (isVaultDelete || intentResult.intent === 'UNKNOWN' || intentResult.confidence < 0.7) {
         intentResult.intent = 'DELETE_DOCUMENT'
         intentResult.confidence = 0.85
       }
+    }
+
+    // DELETE_DOCUMENT bulk override — "sab documents delete", "vault delete", "sab hatao"
+    const isAllDocDelete = /\b(sab|all|saari|mera vault|vault|pure)\b/i.test(lowerMessage)
+      && (/\b(delete|hatao|mitao|remove|clear)\b/i.test(lowerMessage))
+      && !isTaskOrReminderContext
+
+    if (isAllDocDelete && (intentResult.intent === 'UNKNOWN' || intentResult.intent === 'FIND_DOCUMENT' || intentResult.confidence < 0.75)) {
+      intentResult.intent = 'DELETE_DOCUMENT'
+      intentResult.confidence = 0.88
     }
 
     // ─── ABUSE/GALI DETECTION ────────────────────────────

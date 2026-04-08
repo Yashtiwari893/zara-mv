@@ -31,6 +31,9 @@ GET_BRIEFING, HELP, UNKNOWN
 
 - dateTimeText: extract the EXACT time/date phrase from the message (e.g. "kal 2 baje", "friday 5pm", "10 min baad")
 
+- "X bje vala done/complete ho gya" → CANCEL_REMINDER (user is marking reminder as done = cancel it)
+- "X reminder complete" → CANCEL_REMINDER, NOT COMPLETE_TASK
+
 - If user says "tasks", "list", "all", "sab" → set isGenericSearch: true
 
 - If user references something vague ("it", "vo wala", "pehle wala", "usse"), use the CONVERSATION CONTEXT provided to resolve it.
@@ -95,6 +98,12 @@ Message: "Done" / "Ok" / "Thanks" / "Hi" / "Hello"
 
 Message: "Reminder cancel karo"
 → {"intent":"CANCEL_REMINDER","confidence":0.95,"extractedData":{}}
+
+Message: "2 bje vala reminder complete ho gya n" / "2pm wala done ho gya"
+→ {"intent":"CANCEL_REMINDER","confidence":0.92,"extractedData":{"reminderTitle":"Reminder","dateTimeText":"2 bje"}}
+
+Message: "8 Apr 2:00 pm ye reminder complete ho gya n"
+→ {"intent":"CANCEL_REMINDER","confidence":0.92,"extractedData":{"reminderTitle":"Reminder","dateTimeText":"2:00 pm"}}
 
 Message: "delete my all reminders" / "saare reminder cancel karo" / "remove all reminders"
 → {"intent":"CANCEL_REMINDER","confidence":1.0,"extractedData":{"isGenericSearch":true}}

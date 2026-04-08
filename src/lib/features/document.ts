@@ -400,6 +400,49 @@ export async function handleDeleteDocument(params: {
 }) {
   const { userId, phone, language, query } = params
 
+  // BULK DELETE — "sab documents", "mera vault delete"
+  const BULK_DELETE_PATTERN = /\b(sab|all|saari|everything|pure|vault)\b/i
+  const isBulkDocDelete = BULK_DELETE_PATTERN.test(query)
+
+  if (isBulkDocDelete) {
+    const { data: allDocs, error } = await supabase
+      .from('documents')
+      .select('id, storage_path')
+      .eq('user_id', userId)
+
+    if (error) {
+      await sendWhatsAppMessage({ to: phone, message: errorMessage(language) })
+      return null
+    }
+
+    if (!allDocs || allDocs.length === 0) {
+      await sendWhatsAppMessage({
+        to: phone,
+        message: language === 'hi'
+          ? '📭 Aapke vault mein koi document nahi hai.'
+          : '📭 Your vault is empty - no documents to delete.'
+      })
+      return null
+    }
+
+    // Delete from storage
+    const paths = allDocs.map(d => d.storage_path).filter(Boolean) as string[]
+    if (paths.length > 0) {
+      await supabase.storage.from('documents').remove(paths)
+    }
+
+    // Delete records
+    await supabase.from('documents').delete().eq('user_id', userId)
+
+    await sendWhatsAppMessage({
+      to: phone,
+      message: language === 'hi'
+        ? `🗑️ Aapke saare ${allDocs.length} documents delete ho gaye!`
+        : `🗑️ All ${allDocs.length} documents deleted from your vault!`
+    })
+    return null
+  }
+
   const { data: docs } = await supabase
     .from('documents')
     .select('id, label, storage_path')
