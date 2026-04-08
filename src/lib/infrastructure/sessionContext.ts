@@ -4,11 +4,23 @@
 
 import { getSupabaseClient } from './database'
 
+export interface PendingDelete {
+  intent: 'DELETE_LIST' | 'DELETE_DOCUMENT' | 'CANCEL_REMINDER' | 'DELETE_TASK'
+  listName?: string
+  isBulk?: boolean
+  query?: string
+  titleHint?: string
+  isGenericSearch?: boolean
+  taskContent?: string
+  confirmMessage?: string   // human-readable summary shown to user before confirmation
+}
+
 export interface SessionContext {
   last_intent?: string
   last_document_query?: string
   last_list_name?: string
   pending_action?: string
+  pending_delete?: PendingDelete
   document_path?: string
   document_id?: string
   drive_file_id?: string
@@ -115,11 +127,12 @@ export async function clearPendingAction(userId: string): Promise<void> {
           user_id: userId,
           context: {
             ...existing,
-            pending_action: undefined,
-            document_id:    undefined,
-            document_path:  undefined,
-            drive_file_id:  undefined,
-            doc_type:       undefined,
+            pending_action:  undefined,
+            pending_delete:  undefined,
+            document_id:     undefined,
+            document_path:   undefined,
+            drive_file_id:   undefined,
+            doc_type:        undefined,
           },
         },
         { onConflict: 'user_id' }

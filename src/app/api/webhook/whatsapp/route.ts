@@ -24,7 +24,8 @@ import { logger, setTraceId } from '@/lib/infrastructure/logger'
 import { createErrorResponse } from '@/lib/infrastructure/errorHandler'
 import { validatePhone, validatePlainText } from '@/lib/infrastructure/inputValidator'
 import { retryWithExponentialBackoff } from '@/lib/infrastructure/errorHandler'
-import { getContext, updateContext, addToHistory } from '@/lib/infrastructure/sessionContext'
+import { getContext, updateContext, addToHistory, clearPendingAction } from '@/lib/infrastructure/sessionContext'
+import type { PendingDelete } from '@/lib/infrastructure/sessionContext'
 import type { Language } from '@/types'
 
 const supabaseAdmin = getSupabaseClient()
@@ -294,6 +295,46 @@ export async function POST(req: NextRequest) {
     // ─── LOAD SESSION CONTEXT ─────────────────────────────
     const ctx = await getContext(user.id)
 
+    // ─── HANDLE PENDING DELETE CONFIRMATION ──────────────────────
+    if (ctx?.pending_action === 'awaiting_delete_confirm' && ctx?.pending_delete) {
+      const pd = ctx.pending_delete as PendingDelete
+      const lowerMsg = processedMessage.toLowerCase().trim()
+
+      const isYes = /^(haan|ha|yes|y|ok|okay|confirm|bilkul|ji|theek\s*hai|thik\s*hai|kar\s*do|karo|delete\s*karo|done|sure|haan\s*ji|ha\s*ji|han|hnji)$/i.test(lowerMsg)
+      const isNo  = /^(nahi|nhi|nahin|no|n|cancel|rukao|ruk|mat\s*karo|band\s*karo|rehne\s*do|chodo|chordo|naa|na|don'?t|mana\s*hai|nai|nope)$/i.test(lowerMsg)
+
+      if (isYes) {
+        await clearPendingAction(user.id)
+        // Execute the stored delete
+        if (pd.intent === 'DELETE_LIST') {
+          await handleDeleteList({ userId: user.id, phone: cleanFromPhone, language: lang, listName: pd.listName || '', isBulk: !!pd.isBulk })
+        } else if (pd.intent === 'DELETE_DOCUMENT') {
+          await handleDeleteDocument({ userId: user.id, phone: cleanFromPhone, language: lang, query: pd.query || '' })
+        } else if (pd.intent === 'CANCEL_REMINDER') {
+          await handleCancelReminder({ userId: user.id, phone: cleanFromPhone, language: lang, titleHint: pd.titleHint, isGenericSearch: pd.isGenericSearch })
+        } else if (pd.intent === 'DELETE_TASK') {
+          await handleDeleteTask({ userId: user.id, phone: cleanFromPhone, language: lang, taskContent: pd.taskContent || '' })
+        }
+      } else if (isNo) {
+        await clearPendingAction(user.id)
+        await sendWhatsAppMessage({
+          to: cleanFromPhone,
+          message: lang === 'hi'
+            ? '✅ Theek hai, delete cancel kar diya! Koi cheez delete nahi hui.'
+            : '✅ Got it! Nothing was deleted.'
+        })
+      } else {
+        // Neither yes nor no — re-ask
+        await sendWhatsAppMessage({
+          to: cleanFromPhone,
+          message: lang === 'hi'
+            ? `${pd.confirmMessage}\n\n_"Haan" bolein confirm karne ke liye, "Nahi" bolein cancel karne ke liye._`
+            : `${pd.confirmMessage}\n\n_Reply "Yes" to confirm or "No" to cancel._`
+        })
+      }
+      return NextResponse.json({ ok: true })
+    }
+
     // ─── HANDLE PENDING ACTIONS (e.g., awaiting document label) ─
     if (ctx?.pending_action === 'awaiting_label') {
       const rawLabel = processedMessage.trim()
@@ -348,7 +389,13 @@ export async function POST(req: NextRequest) {
     // ONLY override to FIND_DOCUMENT if no task/reminder context present (BUG-05 fix)
     const isTaskOrReminderContext = /\b(task|list|grocery|todo|kaam|saaman|reminder|reminders|yaad|tasks|lists)\b/i.test(lowerMessage)
     const isDeleteContext = /\b(task|list|grocery|todo|tasks)\b/i.test(lowerMessage)
-    const isVaultDelete = /\b(vault|documents?|docs?|files?)\b/i.test(lowerMessage)
+
+    // Negation/complaint guard — "maine X nahi bola", "mene X ko bola hi nhi", "I didn't say X"
+    // These are user corrections/complaints, not commands. Never treat as actionable intents.
+    const isNegationOrComplaint = /\b(nahi|nhi|nahin|never|bola\s+hi\s+nhi|bola\s+nahi|nai\s+bola|didn't|did\s+not|not\s+asked|nai\s+kaha|nahi\s+kaha)\b/i.test(lowerMessage)
+
+    const isVaultDelete = !isNegationOrComplaint
+      && /\b(vault|documents?|docs?|files?)\b/i.test(lowerMessage)
       && /\b(delete|hatao|mitao|remove|clear)\b/i.test(lowerMessage)
 
     // LIST_DOCUMENTS override — "sab documents", "meri files", "all docs"
@@ -368,8 +415,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Deletion override — only for documents, not tasks/lists
-    if (!isDeleteContext && (
+    // Deletion override — only for documents, not tasks/lists, and never for complaints/negations
+    if (!isDeleteContext && !isNegationOrComplaint && (
       lowerMessage.includes('delete') || lowerMessage.includes('hatao') ||
       lowerMessage.includes('mitao') || lowerMessage.includes('remove') ||
       lowerMessage.includes('vault delete') || lowerMessage.includes('vault hatao')
@@ -381,8 +428,11 @@ export async function POST(req: NextRequest) {
     }
 
     // DELETE_DOCUMENT bulk override — "sab documents delete", "vault delete", "sab hatao"
-    const isAllDocDelete = /\b(sab|all|saari|mera vault|vault|pure)\b/i.test(lowerMessage)
-      && (/\b(delete|hatao|mitao|remove|clear)\b/i.test(lowerMessage))
+    // MUST have explicit document keyword (vault/docs/files) — bare "sab delete" is ambiguous
+    const isAllDocDelete = !isNegationOrComplaint
+      && /\b(mera vault|vault|documents?|docs?|files?)\b/i.test(lowerMessage)
+      && /\b(sab|all|saari|pure)?\b/i.test(lowerMessage)
+      && /\b(delete|hatao|mitao|remove|clear)\b/i.test(lowerMessage)
       && !isTaskOrReminderContext
 
     if (isAllDocDelete && (intentResult.intent === 'UNKNOWN' || intentResult.intent === 'FIND_DOCUMENT' || intentResult.confidence < 0.75)) {
@@ -494,13 +544,21 @@ export async function POST(req: NextRequest) {
           // Detect bulk cancel from message itself (LLM may miss isGenericSearch flag)
           const cancelBulkPattern = /\b(all|sab|saare|saari|everything|pure|dono|both)\b/i
           const isCancelAll = !!extractedData.isGenericSearch || cancelBulkPattern.test(processedMessage)
-          await handleCancelReminder({
-            userId: user.id,
-            phone: cleanFromPhone,
-            language: lang,
-            titleHint: extractedData.reminderTitle || undefined,
-            isGenericSearch: isCancelAll,
-            prefix: abuseWarning
+          const reminderLabel = isCancelAll
+            ? (lang === 'hi' ? 'SAARE reminders' : 'ALL reminders')
+            : extractedData.reminderTitle
+              ? `*"${extractedData.reminderTitle}"* reminder`
+              : (lang === 'hi' ? 'yeh reminder' : 'this reminder')
+          const confirmMsg = lang === 'hi'
+            ? `🗑️ Kya aap ${reminderLabel} cancel karna chahte ho?`
+            : `🗑️ Are you sure you want to cancel ${reminderLabel}?`
+          await updateContext(user.id, {
+            pending_action: 'awaiting_delete_confirm',
+            pending_delete: { intent: 'CANCEL_REMINDER', titleHint: extractedData.reminderTitle || undefined, isGenericSearch: isCancelAll, confirmMessage: confirmMsg } as PendingDelete,
+          })
+          await sendWhatsAppMessage({
+            to: cleanFromPhone,
+            message: abuseWarning + confirmMsg + (lang === 'hi' ? '\n\n_"Haan" / "Nahi"_' : '\n\n_Reply "Yes" or "No"_')
           })
           isHandled = true
           break
@@ -555,16 +613,22 @@ export async function POST(req: NextRequest) {
           isHandled = true
           break
 
-        case 'DELETE_TASK':
-          await handleDeleteTask({
-            userId: user.id,
-            phone: cleanFromPhone,
-            language: lang,
-            taskContent: extractedData.taskContent || processedMessage,
-            prefix: abuseWarning
+        case 'DELETE_TASK': {
+          const taskToDelete = extractedData.taskContent || processedMessage
+          const confirmMsg = lang === 'hi'
+            ? `🗑️ Kya aap *"${taskToDelete}"* task delete karna chahte ho?`
+            : `🗑️ Are you sure you want to delete the task *"${taskToDelete}"*?`
+          await updateContext(user.id, {
+            pending_action: 'awaiting_delete_confirm',
+            pending_delete: { intent: 'DELETE_TASK', taskContent: taskToDelete, confirmMessage: confirmMsg } as PendingDelete,
+          })
+          await sendWhatsAppMessage({
+            to: cleanFromPhone,
+            message: abuseWarning + confirmMsg + (lang === 'hi' ? '\n\n_"Haan" / "Nahi"_' : '\n\n_Reply "Yes" or "No"_')
           })
           isHandled = true
           break
+        }
 
         case 'DELETE_LIST': {
           // Strong bulk detection — covers "delete all", "remove both", "delete all task list" etc
@@ -575,14 +639,19 @@ export async function POST(req: NextRequest) {
             || ['all', 'both', 'everything', 'sab', 'saari', 'saare'].includes((extractedData.listName || '').toLowerCase())
           const hasReminderContext = /\b(reminder|reminders|yaad|alarm)\b/i.test(lowerMessage)
           const finalIsBulkDelete = isBulkDelete && !hasReminderContext
-          
-          await handleDeleteList({
-            userId: user.id,
-            phone: cleanFromPhone,
-            language: lang,
-            listName: extractedData.listName || '',
-            isBulk: finalIsBulkDelete,
-            prefix: abuseWarning
+          const listLabel = finalIsBulkDelete
+            ? (lang === 'hi' ? 'SAARI task lists' : 'ALL task lists')
+            : `*"${extractedData.listName}"*`
+          const confirmMsg = lang === 'hi'
+            ? `🗑️ Kya aap ${listLabel} delete karna chahte ho?`
+            : `🗑️ Are you sure you want to delete ${listLabel}?`
+          await updateContext(user.id, {
+            pending_action: 'awaiting_delete_confirm',
+            pending_delete: { intent: 'DELETE_LIST', listName: extractedData.listName || '', isBulk: finalIsBulkDelete, confirmMessage: confirmMsg } as PendingDelete,
+          })
+          await sendWhatsAppMessage({
+            to: cleanFromPhone,
+            message: abuseWarning + confirmMsg + (lang === 'hi' ? '\n\n_"Haan" / "Nahi"_' : '\n\n_Reply "Yes" or "No"_')
           })
           isHandled = true
           break
@@ -617,17 +686,27 @@ export async function POST(req: NextRequest) {
           isHandled = true
           break
 
-        case 'DELETE_DOCUMENT':
-          await handleDeleteDocument({
-            userId: user.id,
-            phone: cleanFromPhone,
-            language: lang,
-            query: extractedData?.documentQuery
-              || processedMessage.replace(/(delete|hatao|mitao|remove|hata)/gi, '').trim()
-              || processedMessage,
+        case 'DELETE_DOCUMENT': {
+          const docQuery = extractedData?.documentQuery
+            || processedMessage.replace(/(delete|hatao|mitao|remove|hata)/gi, '').trim()
+            || processedMessage
+          const docLabel = extractedData?.documentQuery
+            ? `*"${extractedData.documentQuery}"*`
+            : (lang === 'hi' ? 'SAARE documents vault se' : 'ALL documents from your vault')
+          const confirmMsg = lang === 'hi'
+            ? `🗑️ Kya aap ${docLabel} delete karna chahte ho?`
+            : `🗑️ Are you sure you want to delete ${docLabel}?`
+          await updateContext(user.id, {
+            pending_action: 'awaiting_delete_confirm',
+            pending_delete: { intent: 'DELETE_DOCUMENT', query: docQuery, confirmMessage: confirmMsg } as PendingDelete,
+          })
+          await sendWhatsAppMessage({
+            to: cleanFromPhone,
+            message: abuseWarning + confirmMsg + (lang === 'hi' ? '\n\n_"Haan" / "Nahi"_' : '\n\n_Reply "Yes" or "No"_')
           })
           isHandled = true
           break
+        }
 
         case 'GET_BRIEFING':
           await handleGetBriefing({
