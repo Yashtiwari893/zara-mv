@@ -740,7 +740,14 @@ export async function POST(req: NextRequest) {
         }
 
         case 'ADD_TASK': {
-          const rawTaskContent = extractedData.taskContent || processedMessage
+          const extractedTaskContent = typeof extractedData.taskContent === 'string'
+            ? extractedData.taskContent.trim()
+            : ''
+          const looksLikeMultiItemMessage = /[\n,•]/.test(processedMessage) || /\b(aur|and)\b/i.test(processedMessage)
+          const extractedLooksSingleItem = extractedTaskContent.length > 0 && extractedTaskContent.split(/\s+/).length <= 3
+          const rawTaskContent = (looksLikeMultiItemMessage && extractedLooksSingleItem)
+            ? processedMessage
+            : (extractedTaskContent || processedMessage)
           // Guard: vague/future-reference content should not be added literally
           const vaguePattern = /^(jo abhi boluga|jo bolunga|abhi nahi|baad mein|later|coming soon|jo bhi|kuch bhi|anything|something|ek list create karo|list create karo|list banao|list bana do|create karo|create list)$/i
           if (vaguePattern.test(rawTaskContent.trim().toLowerCase())) {
