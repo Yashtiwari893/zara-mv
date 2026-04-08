@@ -452,11 +452,11 @@ export default function FilesPage() {
                                         </p>
                                         <div className="flex items-center gap-2 bg-white p-2 rounded border border-blue-300">
                                             <code className="text-xs font-mono text-blue-900 flex-1">
-                                                https://11za-assistant.vercel.app/api/webhook/whatsapp
+                                                https://zara-mv.vercel.app/api/webhook/whatsapp
                                             </code>
                                             <button
                                                 onClick={() => {
-                                                    const url = "https://11za-assistant.vercel.app/api/webhook/whatsapp";
+                                                    const url = "https://zara-mv.vercel.app/api/webhook/whatsapp";
                                                     if (navigator.clipboard && navigator.clipboard.writeText) {
                                                         navigator.clipboard.writeText(url).then(() => alert("Webhook URL copied to clipboard!"));
                                                     } else {
