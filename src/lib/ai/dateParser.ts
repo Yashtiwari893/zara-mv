@@ -88,12 +88,12 @@ function extractTime(match: RegExpMatchArray, fullText: string = ''): string {
       if (hour < 12) hour += 12
     } else {
       // No context → apply Indian numeric defaults:
-      // 1–6   → PM (people say "1 baje" meaning 1 PM, "6 baje" = 6 PM)
-      // 7–11  → AM (7 baje = 7 AM, morning default)
+      // 1–7   → PM (people usually mean afternoon/evening without "subah")
+      // 8–11  → AM (morning default when no context)
       // 12    → PM (noon)
       // 0     → midnight (edge case, keep as-is)
-      if (hour >= 1 && hour <= 6) hour += 12
-      // 7–11: stays AM, 12: stays PM (noon), 0: stays midnight
+      if (hour >= 1 && hour <= 7) hour += 12
+      // 8–11: stays AM, 12: stays PM (noon), 0: stays midnight
     }
   }
 

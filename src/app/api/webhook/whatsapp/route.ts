@@ -99,17 +99,36 @@ function extractMultiReminderFallbackItems(message: string): Array<{ title: stri
   const dayPrefix = dayMatch ? dayMatch[1] : ''
   const seen = new Set<string>()
 
-  const timeMatches = message.match(/\b(?:subah|dopahar|shaam|sham|raat)?\s*\d{1,2}(?::\d{2})?\s*(?:am|pm|baje|bje)?\b/gi) || []
+  const slots: string[] = []
 
-  const slots = timeMatches
-    .map((s) => s.trim())
-    .filter((s) => /\d/.test(s))
-    .filter((s) => {
-      const key = s.toLowerCase()
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
+  const addUniqueSlot = (raw: string | undefined | null) => {
+    if (!raw) return
+    const clean = raw.trim().replace(/\s+/g, ' ')
+    if (!/\d/.test(clean)) return
+    const key = clean.toLowerCase()
+    if (seen.has(key)) return
+    seen.add(key)
+    slots.push(clean)
+  }
+
+  // Better time pattern: captures "2:00 baje", "3 baje", "7:00 baje", with optional context words.
+  const timeMatches = message.match(/\b(?:subah|dopahar|shaam|sham|raat)?\s*\d{1,2}(?::\d{2})?\s*(?:am|pm|baje|bje)?\b/gi) || []
+  timeMatches.forEach((match) => addUniqueSlot(match))
+
+  // Also extract ordinal-based reminder phrases: pehla/dusra/teesra/chautha/paanchva reminder ... <time>
+  const ordinalPatterns = [
+    /(?:pahla?|pehla?|1st?)\s+reminder[^,.;\n]*?(\d{1,2}(?::\d{2})?\s*(?:baje|bje|am|pm)?)/gi,
+    /(?:dusra|doosra|2nd?)\s+reminder[^,.;\n]*?(\d{1,2}(?::\d{2})?\s*(?:baje|bje|am|pm)?)/gi,
+    /(?:teesra|tisra|3rd?)\s+reminder[^,.;\n]*?(\d{1,2}(?::\d{2})?\s*(?:baje|bje|am|pm)?)/gi,
+    /(?:chautha|chotha|4th?)\s+reminder[^,.;\n]*?(\d{1,2}(?::\d{2})?\s*(?:baje|bje|am|pm)?)/gi,
+    /(?:paanchva|panchva|5th?)\s+reminder[^,.;\n]*?(\d{1,2}(?::\d{2})?\s*(?:baje|bje|am|pm)?)/gi,
+  ]
+
+  for (const pattern of ordinalPatterns) {
+    for (const match of message.matchAll(pattern)) {
+      addUniqueSlot(match[1])
+    }
+  }
 
   return slots.map((slot, index) => ({
     title: `Reminder ${index + 1}`,
@@ -457,7 +476,7 @@ export async function POST(req: NextRequest) {
         case 'ADD_TASK': {
           const rawTaskContent = extractedData.taskContent || processedMessage
           // Guard: vague/future-reference content should not be added literally
-          const vaguePattern = /^(jo abhi boluga|jo bolunga|abhi nahi|baad mein|later|coming soon|jo bhi|kuch bhi|anything|something)$/i
+          const vaguePattern = /^(jo abhi boluga|jo bolunga|abhi nahi|baad mein|later|coming soon|jo bhi|kuch bhi|anything|something|ek list create karo|list create karo|list banao|list bana do|create karo|create list)$/i
           if (vaguePattern.test(rawTaskContent.trim().toLowerCase())) {
             await sendWhatsAppMessage({
               to: cleanFromPhone,

@@ -44,6 +44,10 @@ GET_BRIEFING, HELP, UNKNOWN
   "jo abhi boluga ush ko add kar do" → UNKNOWN (vague future reference — no actual task given)
   "add kar de" (no subject) → UNKNOWN (incomplete instruction)
   "kuch bhi add karo" → UNKNOWN (no specific item given)
+  "Ek list create karo my task" (no actual item) → UNKNOWN (ask user what to add)
+
+- If message only asks to create a list but has NO actual task item, DO NOT create/add instruction text as a task.
+  Return: {"intent":"UNKNOWN","confidence":0.9,"extractedData":{}}
 
 ## MULTI-REMINDER SUPPORT
 If user sets multiple reminders in one message, set:
@@ -56,6 +60,23 @@ Example: "3 reminder set kar: 2pm, 5pm, 8pm" →
     { title: "Reminder 3", dateTimeText: "today 8pm" }
   ]}
 
+## ORDINAL MULTI-REMINDER PARSING
+When user says "pahla X baje ka, dusra Y baje ka, teesra Z baje ka":
+- pahla/pehla/1st = first item
+- dusra/doosra/2nd = second
+- teesra/3rd = third
+- chautha/4th = fourth
+- paanchva/5th = fifth
+
+ALWAYS extract ALL ordinal items. Never skip middle ones.
+Example: "pahla 2 baje, dusra 3 baje, teesra 4 baje, chautha 7 baje" →
+  reminderItems: [
+    { title: "Reminder 1", dateTimeText: "2 baje" },
+    { title: "Reminder 2", dateTimeText: "3 baje" },
+    { title: "Reminder 3", dateTimeText: "4 baje" },
+    { title: "Reminder 4", dateTimeText: "7 baje" }
+  ]
+
 ## AM/PM HINTS FOR TIME
 - Indian context: "2 baje" / "3 baje" (1-5 range) without am/pm usually means AFTERNOON (PM)
 - "subah" = morning (AM), "dopahar" = afternoon (PM), "shaam" = evening (PM), "raat" = night (PM)
@@ -66,7 +87,8 @@ Example: "3 reminder set kar: 2pm, 5pm, 8pm" →
 - "list dikhao" without a specific list name → LIST_TASKS with isGenericSearch: true
 - "reminder list" / "reminders dikhao" → LIST_REMINDERS
 - "sab delete karo" in context of tasks → DELETE_LIST with isGenericSearch: true
-- Questions about ZARA capabilities → HELP
+- Questions ABOUT features/concepts ("what is X", "X kya hai") → UNKNOWN (auto-responder explains warmly)
+- Only capability/help asks ("what can you do", "help", "features batao") → HELP
 - Greeting ("hi", "hello", "hlo") → UNKNOWN (handled by auto-responder warmly)
 - Pure conversational ("nice", "great", "wow") → UNKNOWN
 
@@ -87,7 +109,13 @@ Message: "Meri grocery list dikhao"
 Message: "Tasks dikhao"
 → {"intent":"LIST_TASKS","confidence":0.95,"extractedData":{"isGenericSearch":true}}
 
+Message: "Send list" / "list de re" / "list bhej" / "list send karo"
+→ {"intent":"LIST_TASKS","confidence":0.9,"extractedData":{"isGenericSearch":true}}
+
 Message: "Mujhe address save karna hai to kaise karun"
+→ {"intent":"UNKNOWN","confidence":0.9,"extractedData":{}}
+
+Message: "Ek list create karo my task"
 → {"intent":"UNKNOWN","confidence":0.9,"extractedData":{}}
 
 Message: "Maine kya bola tha wapas bhejo"
@@ -120,10 +148,14 @@ Message: "Mera aadhar dikhao"
 Message: "Help" / "Kya kar sakte ho" / "features batao" / "kya kya kar sakti ho"
 → {"intent":"HELP","confidence":1.0,"extractedData":{}}
 
+Message: "What is ai chat" / "ai chat kya hai" / "ai chat kya hota hai"
+→ {"intent":"UNKNOWN","confidence":1.0,"extractedData":{}}
+
 Message: "hey" / "kish ne bola" / casual chitchat / complaints / questions about ZARA's behavior
 → {"intent":"UNKNOWN","confidence":1.0,"extractedData":{}}
 
-CRITICAL: HELP is ONLY for when user explicitly asks "what can you do" or "help" or "features". 
+CRITICAL: HELP is ONLY for when user explicitly asks "what can you do" or "help" or "features".
+Questions like "what is ai chat" / "X kya hai" / feature explanation asks → ALWAYS UNKNOWN.
 Casual greetings, complaints, sarcasm → ALWAYS UNKNOWN.
 
 Message: "Aaj ka summary"
