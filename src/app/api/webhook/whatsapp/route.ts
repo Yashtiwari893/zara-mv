@@ -157,11 +157,18 @@ function getIndependentCommandLines(message: string): string[] {
 }
 
 function extractKnownListName(text: string): string | undefined {
-  const knownListPhrase = text.match(/\b(grocery|task|office|shopping|work|personal|home|general)\s+list\b/i)
-  if (knownListPhrase?.[1]) return knownListPhrase[1].toLowerCase()
+  const normalizeKnownList = (value: string): string => {
+    const v = value.toLowerCase()
+    if (v === 'sabzi' || v === 'kirana') return 'grocery'
+    if (v === 'kaam') return 'task'
+    return v
+  }
 
-  const knownListBare = text.match(/^(grocery|task|office|shopping|work|personal|home|general)$/i)
-  if (knownListBare?.[1]) return knownListBare[1].toLowerCase()
+  const knownListPhrase = text.match(/\b(grocery|task|office|shopping|work|personal|home|general|sabzi|kirana|kaam)\s+list\b/i)
+  if (knownListPhrase?.[1]) return normalizeKnownList(knownListPhrase[1])
+
+  const knownListBare = text.match(/\b(grocery|task|office|shopping|work|personal|home|general|sabzi|kirana|kaam)\b/i)
+  if (knownListBare?.[1]) return normalizeKnownList(knownListBare[1])
 
   return undefined
 }

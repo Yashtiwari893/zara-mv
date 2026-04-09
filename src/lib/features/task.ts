@@ -208,9 +208,15 @@ export async function handleListTasks(params: {
   prefix?: string
 }) {
   const { userId, phone, language, isGenericSearch, prefix = '' } = params
+  console.log('[task] handleListTasks input:', { userId, listName: params.listName, isGenericSearch })
 
-  const explicitKnownListMatch = params.listName?.match(/\b(grocery|task|office|shopping|work|personal|home|general)\b/i)
-  const explicitKnownList = explicitKnownListMatch?.[1]?.toLowerCase() || ''
+  const explicitKnownListMatch = params.listName?.match(/\b(grocery|task|office|shopping|work|personal|home|general|sabzi|kirana|kaam)\b/i)
+  const explicitKnownListRaw = explicitKnownListMatch?.[1]?.toLowerCase() || ''
+  const explicitKnownList = explicitKnownListRaw === 'kaam'
+    ? 'task'
+    : (explicitKnownListRaw === 'sabzi' || explicitKnownListRaw === 'kirana')
+      ? 'grocery'
+      : explicitKnownListRaw
   
   // ── 1. GENERIC SEARCH HANDLING ──────────────────────────────
   // If user says "tasks" or "list", show them all available lists
@@ -224,8 +230,8 @@ export async function handleListTasks(params: {
   if (
     (isGenericSearch && !hasExplicitSpecificList)
     || !params.listName
-    || !cleanedListName
-    || ['list', 'lists', 'all', 'sab', 'sabhi', ''].includes(cleanedListName)
+    || (!cleanedListName && !hasExplicitSpecificList)
+    || (!hasExplicitSpecificList && ['list', 'lists', 'all', 'sab', 'sabhi', ''].includes(cleanedListName))
   ) {
     return await handleListAllLists({ userId, phone, language })
   }
