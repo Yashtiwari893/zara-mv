@@ -708,7 +708,7 @@ export async function POST(req: NextRequest) {
             phone: cleanFromPhone,
             language: lang,
             minutes: extractedData.snoozeMinutes,
-            customText: extractedData.dateTimeText || undefined,
+            customText: extractedData.dateTimeText || processedMessage,
             prefix: abuseWarning
           })
           isHandled = true
@@ -937,6 +937,24 @@ export async function POST(req: NextRequest) {
           logger.warn('Session context update failed (silent)', { userId: user.id, error: (ctxErr as Error).message })
         }
       } else {
+        // Safety: avoid hallucinated factual data in free-form chat for task/list/reminder/document queries.
+        // If intent routing missed but user message clearly references structured data, ask a deterministic clarification.
+        const hasStructuredKeyword = /\b(list|lists|task|tasks|todo|grocery|shopping|reminder|reminders|alarm|document|documents|doc|docs|vault|file|files)\b/i.test(lowerMessage)
+        if (hasStructuredKeyword) {
+          await sendWhatsAppMessage({
+            to: cleanFromPhone,
+            message: lang === 'hi'
+              ? '❓ Main is command ko clear samajh nahi paaya.\n\nTry karo:\n• "all list send karo"\n• "grocery list dikhao"\n• "send my reminder list"\n• "mera aadhar dikhao"'
+              : '❓ I could not clearly map this command.\n\nTry:\n• "send all lists"\n• "show grocery list"\n• "send my reminder list"\n• "show my aadhar"'
+          })
+          await addToHistory(user.id, 'user', processedMessage)
+          await addToHistory(user.id, 'assistant', lang === 'hi'
+            ? 'Main is command ko clear samajh nahi paaya. Suggested formats bheje hain.'
+            : 'I could not clearly map this command. Suggested formats were sent.')
+          logger.info('✅ Message handled via structured-keyword clarification', { userId: user.id })
+          return NextResponse.json({ ok: true })
+        }
+
         // Not handled by any feature? Use Auto-Responder (pass userId for unified history)
         const autoResp = await generateAutoResponse(cleanFromPhone, cleanToPhone, processedMessage, messageId, user.id)
         if (autoResp.response && autoResp.response !== 'Duplicate prevention' && autoResp.response !== 'Safety skip — recent reply detected') {

@@ -52,15 +52,12 @@ export const metadata: Metadata = {
   icons: {
     icon: "/favicon.ico",
   },
-
-  // No index on staging — production pe hata dena
-  // robots: { index: false, follow: false },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#25D366", // WhatsApp green — browser tab color on mobile
+  themeColor: "#25D366",
 };
 
 export default function RootLayout({
