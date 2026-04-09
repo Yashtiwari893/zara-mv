@@ -242,7 +242,7 @@ function quickParse(text: string): ParsedDateTime | null {
 
   // ── One-shot: "kal/aaj/parso + time" ─────────────────────────────────
   // Pattern: (kal|aaj|parso)? digit (optional :mm) (period marker)
-  const ONE_SHOT_TIME_RE = /\b(kal|aaj|today|tomorrow|parso|cal)?\b.*?\b(\d{1,2})(?::(\d{2}))?\s*(a\.m\.|p\.m\.|am|pm|bje|baje|bajey)\b/i
+  const ONE_SHOT_TIME_RE = /\b(kal|aaj|today|tomorrow|parso|cal)?\b.*?\b(\d{1,2})(?::(\d{2}))?\s*(a\.m\.|p\.m\.|am|pm|bje|baje|bajey)(?!\w)/i
   const oneShotMatch = lower.match(ONE_SHOT_TIME_RE)
 
   if (oneShotMatch) {
@@ -250,9 +250,8 @@ function quickParse(text: string): ParsedDateTime | null {
 
     // Extract properly using the core util
     // Construct a pseudo-match array for extractTime: [full, hour, min, period]
-    const rawPeriod = oneShotMatch[4] || ''
-    const normalizedPeriod = rawPeriod.replace(/\./g, '').toLowerCase() // "p.m." -> "pm"
-    const pseudoMatch = [oneShotMatch[0], oneShotMatch[2], oneShotMatch[3], normalizedPeriod] as unknown as RegExpMatchArray
+    const rawPeriod = (oneShotMatch[4] || '').replace(/\./g, '').toLowerCase() // "p.m." -> "pm"
+    const pseudoMatch = [oneShotMatch[0], oneShotMatch[2], oneShotMatch[3], rawPeriod] as unknown as RegExpMatchArray
     const timeStr = extractTime(pseudoMatch, lower)
     // Create date and force it to be IST by calculating the offset
     const targetDate = new Date(now)

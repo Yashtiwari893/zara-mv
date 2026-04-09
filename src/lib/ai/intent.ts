@@ -30,6 +30,10 @@ GET_BRIEFING, HELP, UNKNOWN
   "kal 2 baje doctor appointment ka reminder" → reminderTitle: "doctor appointment", dateTimeText: "kal 2 baje"
 
 - dateTimeText: extract the EXACT time/date phrase from the message (e.g. "kal 2 baje", "friday 5pm", "10 min baad")
+- CRITICAL: When extracting dateTimeText, ALWAYS preserve day references (today, aaj, tomorrow, kal, parso) verbatim at the START of dateTimeText.
+  Example: "Set reminder Today at 5:00 p.m." -> dateTimeText: "today 5:00 p.m."
+  Example: "aaj 6 bje reminder" -> dateTimeText: "aaj 6 bje"
+  NEVER strip "today", "aaj", "tomorrow", "kal" from dateTimeText.
 
 - "X bje vala done/complete ho gya" → CANCEL_REMINDER (user is marking reminder as done = cancel it)
 - "X reminder complete" → CANCEL_REMINDER, NOT COMPLETE_TASK
