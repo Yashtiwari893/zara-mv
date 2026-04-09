@@ -208,6 +208,9 @@ export async function handleListTasks(params: {
   prefix?: string
 }) {
   const { userId, phone, language, isGenericSearch, prefix = '' } = params
+
+  const explicitKnownListMatch = params.listName?.match(/\b(grocery|task|office|shopping|work|personal|home|general)\b/i)
+  const explicitKnownList = explicitKnownListMatch?.[1]?.toLowerCase() || ''
   
   // ── 1. GENERIC SEARCH HANDLING ──────────────────────────────
   // If user says "tasks" or "list", show them all available lists
@@ -216,16 +219,18 @@ export async function handleListTasks(params: {
     .replace(/\s+/g, ' ')
     .trim() || ''
 
+  const hasExplicitSpecificList = Boolean(explicitKnownList)
+
   if (
-    isGenericSearch
+    (isGenericSearch && !hasExplicitSpecificList)
     || !params.listName
     || !cleanedListName
-    || ['task', 'tasks', 'list', 'lists', 'all', 'sab', 'sabhi', ''].includes(cleanedListName)
+    || ['list', 'lists', 'all', 'sab', 'sabhi', ''].includes(cleanedListName)
   ) {
     return await handleListAllLists({ userId, phone, language })
   }
 
-  const listName = normalizeListName(params.listName)
+  const listName = normalizeListName(explicitKnownList || params.listName)
 
   const { data: lists } = await supabase
     .from('lists')

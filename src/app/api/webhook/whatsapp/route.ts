@@ -140,6 +140,32 @@ function extractMultiReminderFallbackItems(message: string): Array<{ title: stri
   }))
 }
 
+function getIndependentCommandLines(message: string): string[] {
+  const lines = message
+    .trim()
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  if (lines.length <= 1) return []
+
+  const looksLikeCommands = lines.every((line) =>
+    /\b(add|karo|karna|set|create|delete|show|dikhao|hatao|remind|list|mein)\b/i.test(line)
+  )
+
+  return looksLikeCommands ? lines : []
+}
+
+function extractKnownListName(text: string): string | undefined {
+  const knownListPhrase = text.match(/\b(grocery|task|office|shopping|work|personal|home|general)\s+list\b/i)
+  if (knownListPhrase?.[1]) return knownListPhrase[1].toLowerCase()
+
+  const knownListBare = text.match(/^(grocery|task|office|shopping|work|personal|home|general)$/i)
+  if (knownListBare?.[1]) return knownListBare[1].toLowerCase()
+
+  return undefined
+}
+
 export async function POST(req: NextRequest) {
   // ─── TRACE ID & LOGGING ────────────────────────────────
   const traceId = uuid()
@@ -756,6 +782,34 @@ export async function POST(req: NextRequest) {
         }
 
         case 'ADD_TASK': {
+          const commandLines = getIndependentCommandLines(processedMessage)
+          if (commandLines.length > 1) {
+            for (const line of commandLines) {
+              const perLineIntent = await classifyIntent(line, lang, ctx)
+              if (perLineIntent.intent !== 'ADD_TASK') continue
+
+              const perLineData = perLineIntent.extractedData || {}
+              const perLineTask = typeof perLineData.taskContent === 'string' && perLineData.taskContent.trim().length > 0
+                ? perLineData.taskContent.trim()
+                : line
+              const perLineList = perLineData.listName
+                || extractKnownListName(line.toLowerCase())
+                || ctx?.last_list_name
+                || 'general'
+
+              await handleAddTask({
+                userId: user.id,
+                phone: cleanFromPhone,
+                language: lang,
+                taskContent: perLineTask,
+                listName: perLineList,
+                prefix: abuseWarning,
+              })
+            }
+            isHandled = true
+            break
+          }
+
           const extractedTaskContent = typeof extractedData.taskContent === 'string'
             ? extractedData.taskContent.trim()
             : ''
@@ -789,16 +843,22 @@ export async function POST(req: NextRequest) {
         }
 
         case 'LIST_TASKS':
+          {
+          let fallbackListName = extractedData.listName || ''
+          if (!fallbackListName) {
+            fallbackListName = extractKnownListName(lowerMessage) || ''
+          }
           await handleListTasks({
             userId: user.id,
             phone: cleanFromPhone,
             language: lang,
-            listName: extractedData.listName || '',
+            listName: fallbackListName,
             isGenericSearch: extractedData.isGenericSearch,
             prefix: abuseWarning
           })
           isHandled = true
           break
+          }
 
         case 'COMPLETE_TASK':
           await handleCompleteTask({
