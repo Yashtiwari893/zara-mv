@@ -156,6 +156,28 @@ function getIndependentCommandLines(message: string): string[] {
   return looksLikeCommands ? lines : []
 }
 
+function extractRescheduleTargetTime(message: string): string | null {
+  const normalized = message.trim()
+  if (!normalized) return null
+
+  const timePhrasePattern = /\b((?:today|aaj|tomorrow|kal|parso)?\s*\d{1,2}(?::\d{2})?\s*(?:am|pm|baje|bje|bajey))\b/gi
+  const rescheduleMarkers = /(?:reschedule|change|badal|shift|move|kar\s*do|karo|kr\s*do|bana\s*do|set\s*kar)/i
+  const markerMatch = normalized.match(rescheduleMarkers)
+
+  if (markerMatch && markerMatch.index !== undefined) {
+    const afterMarker = normalized.substring(markerMatch.index + markerMatch[0].length)
+    const timeMatch = afterMarker.match(/\b((?:today|aaj|tomorrow|kal|parso)?\s*\d{1,2}(?::\d{2})?\s*(?:am|pm|baje|bje|bajey))\b/i)
+    if (timeMatch) return timeMatch[1].trim()
+  }
+
+  const allTimes = [...normalized.matchAll(timePhrasePattern)]
+  if (allTimes.length >= 2) {
+    return allTimes[allTimes.length - 1][1].trim()
+  }
+
+  return null
+}
+
 function extractKnownListName(text: string): string | undefined {
   const normalizeKnownList = (value: string): string => {
     const v = value.toLowerCase()
@@ -787,17 +809,19 @@ export async function POST(req: NextRequest) {
         }
 
         // BUG-08 FIX: Added missing SNOOZE_REMINDER case
-        case 'SNOOZE_REMINDER':
+        case 'SNOOZE_REMINDER': {
+          const rescheduleTarget = extractRescheduleTargetTime(processedMessage)
           await handleSnoozeReminder({
             userId: user.id,
             phone: cleanFromPhone,
             language: lang,
             minutes: extractedData.snoozeMinutes,
-            customText: extractedData.dateTimeText || processedMessage,
+            customText: rescheduleTarget || extractedData.dateTimeText || processedMessage,
             prefix: abuseWarning
           })
           isHandled = true
           break
+        }
 
         // BUG-08 FIX: Added missing CANCEL_REMINDER case
         case 'CANCEL_REMINDER': {

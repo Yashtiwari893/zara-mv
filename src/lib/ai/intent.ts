@@ -34,6 +34,12 @@ GET_BRIEFING, HELP, UNKNOWN
   Example: "Set reminder Today at 5:00 p.m." -> dateTimeText: "today 5:00 p.m."
   Example: "aaj 6 bje reminder" -> dateTimeText: "aaj 6 bje"
   NEVER strip "today", "aaj", "tomorrow", "kal" from dateTimeText.
+- For SNOOZE_REMINDER / reschedule requests with TWO times in the message:
+  The user mentions an OLD time (reference) and a NEW time (target).
+  "5 pm wala reminder 6 PM kar do" -> dateTimeText should be "6 PM" (the NEW time only)
+  "3 baje wala 5 baje shift karo" -> dateTimeText should be "5 baje" (the NEW time only)
+  ALWAYS extract only the TARGET/NEW time in dateTimeText, never the reference/old time.
+  The old time is just for identifying which reminder to reschedule.
 
 - "X bje vala done/complete ho gya" → CANCEL_REMINDER (user is marking reminder as done = cancel it)
 - "X reminder complete" → CANCEL_REMINDER, NOT COMPLETE_TASK
@@ -178,6 +184,15 @@ Message: "Doodh ho gaya"
 
 Message: "Snooze kar do 30 min"
 → {"intent":"SNOOZE_REMINDER","confidence":0.95,"extractedData":{"snoozeMinutes":30}}
+
+Message: "5 pm wala reminder 6 PM kar do"
+→ {"intent":"SNOOZE_REMINDER","confidence":0.95,"extractedData":{"dateTimeText":"6 PM"}}
+
+Message: "aaj 3 baje wala reminder 5 baje shift karo"
+→ {"intent":"SNOOZE_REMINDER","confidence":0.95,"extractedData":{"dateTimeText":"5 baje"}}
+
+Message: "today 2pm reminder change to 4pm"
+→ {"intent":"SNOOZE_REMINDER","confidence":0.95,"extractedData":{"dateTimeText":"4pm"}}
 
 Message: "Delete all lists" / "delete all task list" / "remove all lists"
 → {"intent":"DELETE_LIST","confidence":1.0,"extractedData":{"isGenericSearch":true}}
