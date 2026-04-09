@@ -780,7 +780,7 @@ export async function POST(req: NextRequest) {
             phone: cleanFromPhone,
             language: lang,
             taskContent: rawTaskContent,
-            listName: extractedData.listName || 'general',
+            listName: extractedData.listName || ctx?.last_list_name || 'general',
             prefix: abuseWarning
           })
           isHandled = true
