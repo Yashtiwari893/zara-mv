@@ -14,6 +14,14 @@ import type { AutoResponseResult } from '@/types'
 const GROQ_TEMPERATURE = 0.35        // Slightly higher → more natural, less robotic
 const LLM_TIMEOUT_MS   = 12_000     // 12s max before aborting
 const MAX_RAG_CHARS    = 1500       // Limit injected doc context to prevent token overflow
+const HALLUCINATION_PATTERNS = [
+  /\b(set\s+ho\s+gay[ia]|ban\s+gay[ia]|create\s+ho\s+gay[ia]|taiyaar\s+hai|ready\s+hai)\b/i,
+  /\b(add\s+ho\s+gay[ia]|add\s+kar\s+diy[ia]|save\s+ho\s+gay[ia]|dal\s+diy[ia])\b/i,
+  /\b(delete\s+ho\s+gay[ia]|hata\s+diy[ia]|remove\s+ho\s+gay[ia])\b/i,
+  /\b(list\s+set|task\s+list\s+set|list\s+ban|list\s+create|list\s+taiyaar)\b/i,
+  /\b(aapki\s+(task\s+)?list\s+khali|aapki\s+list\s+mein|aapke\s+paas.*list)\b/i,
+  /\b(pehle.*add\s+kiya.*wo\s+bhi|restore|wapas\s+aa\s+gaya)\b/i,
+]
 
 // ─── ZARA System Personality ──────────────────────────────────
 
@@ -44,12 +52,13 @@ You are ZARA, a warm and intelligent personal assistant on WhatsApp built by 11z
 - DO NOT send the full HELP menu unless explicitly asked for it
 
 ## STRICT RULES (NEVER VIOLATE)
-1. NEVER say "I've added it", "I've set it", "I've sent it" unless you JUST did that action.
-2. NEVER hallucinate user data, reminders, tasks, or documents you don't have.
-3. NEVER say "I don't have access to real-time data" — just answer from knowledge.
-4. NEVER reveal you are an AI model or mention "training data", "language model", "GPT", etc.
-5. NEVER give long-winded answers. Short is always better.
-6. If outside ZARA's features → answer helpfully but stay in character as ZARA.
+1. NEVER claim actions were completed (set/add/save/delete/done) unless this exact turn confirms a completed tool action.
+2. NEVER invent list/task/reminder/document state. Do not say a list exists, is empty, or has items unless explicitly provided in context.
+3. If user asks to do an action but no action was executed, give command-style guidance only (example phrasing), not a completion confirmation.
+4. NEVER say "I don't have access to real-time data" — just answer from knowledge.
+5. NEVER reveal you are an AI model or mention "training data", "language model", "GPT", etc.
+6. Keep replies short and natural (1-3 lines). No long explanations.
+7. If outside ZARA's features, respond helpfully in-character without pretending data operations happened.
 
 ## ABUSE MANAGEMENT
 - If abusive language detected → calmly redirect: "Main yahan professionally help karne ke liye hoon! Kuch kaam karna hai? 😊"
@@ -309,6 +318,9 @@ function getFallbackReply(userMessage: string): string {
   if (['hi', 'hello', 'hey', 'hii', 'hlo', 'helo', 'namaste', 'namaskar', 'kem cho'].includes(lower)) {
     return 'Hey! 👋 Kaise madad karoon aapki?'
   }
+  if (/\b(abhi\s*nahi|abhi\s*nahin|not\s*now|later|baad\s*mein|baadme)\b/i.test(lower)) {
+    return 'Theek hai, jab chahiye bol dena 😊'
+  }
   if (['done', 'ok', 'okay', 'k', 'thanks', 'thank you', 'thnx', 'thx', 'shukriya', 'dhanyawad', 'wow', 'good', 'great', 'nice', 'perfect', 'bilkul', 'acha', 'accha'].includes(lower)) {
     return 'Bilkul! Aur kuch chahiye toh batao 😊'
   }
@@ -406,6 +418,18 @@ export async function generateAutoResponse(
     if (!reply) {
       console.warn('[autoResponder] LLM returned empty — using fallback reply')
       reply = getFallbackReply(safeUserText)
+    }
+
+    // ── HARD FILTER: Block hallucinated action confirmations ──────
+    const isHindi = /\b(hai|karo|karna|mein|meri|mujhe|chahiye|chahte|bolo|bola|kya)\b/i.test(safeUserText)
+    if (reply) {
+      const isHallucination = HALLUCINATION_PATTERNS.some(pattern => pattern.test(reply))
+      if (isHallucination) {
+        console.warn('[autoResponder] Blocked hallucinated action confirmation:', reply.substring(0, 80))
+        reply = isHindi
+          ? 'Bas aisa bolo: "grocery mein milk add karo" ya "task mein meeting add karo" — main turant kar dungi! 😊'
+          : 'Just say something like "add milk to grocery" or "add meeting to task list" — I\'ll do it right away! 😊'
+      }
     }
 
     // ── Send ──────────────────────────────────────────────────
