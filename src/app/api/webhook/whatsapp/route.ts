@@ -4,7 +4,7 @@ import { classifyIntent } from '@/lib/ai/intent'
 import { getOrCreateUser, handleOnboarding } from '@/lib/features/onboarding'
 import {
   handleSetReminder, handleListReminders,
-  handleSnoozeReminder, handleCancelReminder
+  handleSnoozeReminder, handleCancelReminder, handleRescheduleReminder
 } from '@/lib/features/reminder'
 import {
   handleAddTask, handleListTasks, handleCompleteTask,
@@ -670,6 +670,8 @@ export async function POST(req: NextRequest) {
       intentResult.confidence = 0.88
     }
 
+    const isRescheduleKeyword = /\b(reschedule|residual|badal\s*do|change\s*(?:the\s*)?time|dobara\s*set)\b/i.test(lowerMessage)
+
     // ─── ABUSE/GALI DETECTION ────────────────────────────
     // BUG-22: Removed 'sale' (shopping sale) from abuse list
     const abusePattern = /\b(kutte|bc|bhenchod|madarchod|mc|hrami|saale|kamine|kutta)\b/i
@@ -685,9 +687,10 @@ export async function POST(req: NextRequest) {
     // ─── ROUTE TO FEATURE HANDLERS ────────────────────────
     let isHandled = false
     const { intent, extractedData } = intentResult
+    const resolvedIntent = isRescheduleKeyword ? 'RESCHEDULE_REMINDER' : intent
 
     try {
-      switch (intent) {
+      switch (resolvedIntent) {
         case 'SET_REMINDER':
           // BUG-04 FIX: Multi-reminder support
           if (extractedData.isMultiReminder && Array.isArray(extractedData.reminderItems) && extractedData.reminderItems.length > 0) {
@@ -769,6 +772,19 @@ export async function POST(req: NextRequest) {
           })
           isHandled = true
           break
+
+        case 'RESCHEDULE_REMINDER': {
+          await handleRescheduleReminder({
+            userId: user.id,
+            phone: cleanFromPhone,
+            language: lang,
+            reminderIdentifier: extractedData.reminderTitle || processedMessage,
+            newDateTime: extractedData.dateTimeText || processedMessage,
+            prefix: abuseWarning,
+          })
+          isHandled = true
+          break
+        }
 
         // BUG-08 FIX: Added missing SNOOZE_REMINDER case
         case 'SNOOZE_REMINDER':
@@ -1068,7 +1084,7 @@ export async function POST(req: NextRequest) {
       if (isHandled) {
         try {
           await updateContext(user.id, {
-            last_intent: intent,
+            last_intent: resolvedIntent,
             last_list_name: extractedData?.listName || ctx.last_list_name || undefined,
             last_document_query: extractedData?.documentQuery || ctx.last_document_query || undefined,
             last_referenced_id: extractedData?.lastReferencedId || ctx.last_referenced_id || undefined
@@ -1129,7 +1145,7 @@ export async function POST(req: NextRequest) {
       }
 
     } catch (featureErr) {
-      logger.error('Feature handler error', { userId: user.id, intent }, featureErr as Error)
+      logger.error('Feature handler error', { userId: user.id, intent: resolvedIntent }, featureErr as Error)
 
       if (!isHandled) {
         try {

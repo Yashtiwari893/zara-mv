@@ -54,7 +54,7 @@ const EMPTY: ParsedDateTime = {
 }
 
 function getAmbiguityFlags(text: string) {
-  const hasExplicitDay = /\b(kal|aaj|today|tomorrow|parso|monday|tuesday|wednesday|thursday|friday|saturday|sunday|som|mangal|budh|guru|shukra|shani|ravi|\d{1,2}\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)|\d{1,2}\/\d{1,2})\b/i.test(text)
+  const hasExplicitDay = /\b(kal|cal|aaj|today|tomorrow|parso|monday|tuesday|wednesday|thursday|friday|saturday|sunday|som|mangal|budh|guru|shukra|shani|ravi|\d{1,2}\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)|\d{1,2}\/\d{1,2})\b/i.test(text)
   const hasExplicitAmPm = /\b(am|pm|subah|dopahar|shaam|sham|raat|morning|evening|night|afternoon|baje|bje|bajey)\b/i.test(text)
   const hasExplicitTime = /\b(?:\d{1,2}|ek|do|teen|chaar|char|paanch|panch|chhe|cheh|saat|aath|nau|das|gyarah|baraah|baarah)(?::\d{2})?\s*(?:am|pm|bje|baje|bajey)?\b/i.test(text)
 
@@ -389,9 +389,12 @@ Output ONLY this JSON object:
 // ─── ADVANCE DATE IF IN PAST ──────────────────────────────────
 // Pushes a past date forward to the next valid occurrence (next day, etc.)
 // Returns null if still in past after max reasonable adjustments.
-function resolveIfPast(parsedDate: Date, now: Date): Date | null {
+function resolveIfPast(parsedDate: Date, now: Date, hasExplicitToday: boolean = false): Date | null {
   const fiveMinAgo = new Date(now.getTime() - 5 * 60_000)
   if (parsedDate >= fiveMinAgo) return parsedDate
+
+  // Respect explicit "today/aaj" requests — do not auto-advance to tomorrow.
+  if (hasExplicitToday) return parsedDate
 
   // Try advancing one day (most common case: user said "5 baje" meaning later today but Groq picked yesterday)
   const advanced = new Date(parsedDate.getTime())
@@ -422,6 +425,7 @@ export async function parseDateTime(
   const cleanText = text.trim()
   const normalizedText = normalizeHindiTimeText(cleanText.toLowerCase())
   const ambiguityFlags = getAmbiguityFlags(normalizedText)
+  const hasExplicitToday = /\b(today|aaj|aaj\s+ka|is\s+waqt|abhi)\b/i.test(normalizedText)
 
   // ── GUARDRAIL 2: Text too long ────────────────────────────
   if (cleanText.length > 300) {
@@ -506,7 +510,7 @@ export async function parseDateTime(
 
     // ── GUARDRAIL 7: Resolve past dates ───────────────────────
     if (parsedDate) {
-      const resolved = resolveIfPast(parsedDate, now)
+      const resolved = resolveIfPast(parsedDate, now, hasExplicitToday)
       if (resolved === null) {
         return { ...EMPTY, humanReadable: cleanText }
       }

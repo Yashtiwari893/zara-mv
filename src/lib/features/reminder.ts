@@ -326,6 +326,96 @@ export async function handleSnoozeReminder(params: {
   })
 }
 
+// ─── RESCHEDULE REMINDER ─────────────────────────────────────
+
+export async function handleRescheduleReminder(params: {
+  userId: string
+  phone: string
+  language: Language
+  reminderIdentifier?: string
+  newDateTime: string
+  prefix?: string
+}) {
+  const { userId, phone, language, reminderIdentifier, newDateTime, prefix = '' } = params
+
+  const parsed = await parseDateTime(newDateTime)
+  if (!parsed?.date) {
+    await sendWhatsAppMessage({
+      to: phone,
+      message: prefix + (language === 'hi'
+        ? '❓ Naya time samajh nahi aaya. Jaise: "kal subah 5 baje" ya "2:00 am"'
+        : '❓ I could not understand the new time. Try: "tomorrow 5am" or "2:00 am"')
+    })
+    return
+  }
+
+  const diffMs = parsed.date.getTime() - Date.now()
+  if (diffMs < APP.MIN_REMINDER_LEAD_TIME_MS) {
+    await sendWhatsAppMessage({
+      to: phone,
+      message: prefix + (language === 'hi'
+        ? '⚠️ Reschedule ke liye kam se kam 1 minute aage ka time do. 😊'
+        : '⚠️ Please choose a new time at least 1 minute in the future. 😊')
+    })
+    return
+  }
+
+  const { data: reminders } = await supabase
+    .from('reminders')
+    .select('id, title, scheduled_at, status')
+    .eq('user_id', userId)
+    .in('status', ['pending', 'sent'])
+    .order('scheduled_at', { ascending: false })
+    .limit(30)
+
+  if (!reminders || reminders.length === 0) {
+    await sendWhatsAppMessage({
+      to: phone,
+      message: prefix + (language === 'hi'
+        ? '📭 Reschedule karne ke liye koi reminder nahi mila.'
+        : '📭 No reminder found to reschedule.')
+    })
+    return
+  }
+
+  let target = reminders[0]
+  const identifier = (reminderIdentifier || '').toLowerCase().trim()
+
+  if (identifier) {
+    // Try time-based matching first (e.g., "5 pm wala reminder")
+    const parsedIdentifier = await parseDateTime(identifier)
+    if (parsedIdentifier?.date) {
+      const targetTs = parsedIdentifier.date.getTime()
+      const byTime = reminders.find((r) => Math.abs(new Date(r.scheduled_at).getTime() - targetTs) <= 90 * 60 * 1000)
+      if (byTime) target = byTime
+    }
+
+    // Fallback to title-based matching
+    if (!target || !identifier.includes(target.title?.toLowerCase?.() || '')) {
+      const byTitle = reminders.find((r) => identifier.includes((r.title || '').toLowerCase()))
+      if (byTitle) target = byTitle
+    }
+  }
+
+  await supabase
+    .from('reminders')
+    .update({ scheduled_at: parsed.date.toISOString(), status: 'pending' })
+    .eq('id', target.id)
+
+  const humanReadable = parsed.date.toLocaleString('en-IN', {
+    timeZone: APP.DEFAULT_TIMEZONE,
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  })
+
+  await sendWhatsAppMessage({
+    to: phone,
+    message: prefix + (language === 'hi'
+      ? `✅ *${target.title}* reminder reschedule ho gaya: ${humanReadable} 😊`
+      : `✅ *${target.title}* reminder rescheduled to ${humanReadable} 😊`)
+  })
+}
+
 // ─── CANCEL REMINDER ──────────────────────────────────────────
 
 export async function handleCancelReminder(params: {
