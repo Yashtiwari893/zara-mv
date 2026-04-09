@@ -61,6 +61,28 @@ export async function handleAddTask(params: {
   const normalized = normalizeListName(listName)
   const normalizedLower = normalized.toLowerCase()
 
+  const rawTaskTitle = (params.taskContent || '').trim()
+  const QUANTITY_ONLY_PATTERNS = [
+    /^(ek|do|teen|chaar|paanch|che|saat|aath|nau|das|1|2|3|4|5|6|7|8|9|10)\s+(item|items|cheez|cheezein|chijen|task|tasks|kaam)$/i,
+    /^(a\s+few|some|few|multiple|kai|thodi)\s+(item|items|cheez|task|tasks)$/i,
+    /^(do|teen|chaar)\s+(item|items)$/i,
+  ]
+  const isQuantityPlaceholder = QUANTITY_ONLY_PATTERNS.some((p) => p.test(rawTaskTitle))
+
+  if (isQuantityPlaceholder || !rawTaskTitle || rawTaskTitle.length < 2) {
+    const quantityMatch = rawTaskTitle.match(/\b(ek|do|teen|chaar|paanch|1|2|3|4|5)\b/i)
+    const quantityWord = (quantityMatch?.[1] || 'kuch').toLowerCase()
+    const quantityNum = ({ ek: '1', do: '2', teen: '3', chaar: '4', paanch: '5' } as Record<string, string>)[quantityWord] || quantityWord
+
+    await sendWhatsAppMessage({
+      to: phone,
+      message: language === 'hi'
+        ? `${normalized} list mein kaun se ${quantityNum} items add karne hain? 😊\nBas naam bata do, main add kar dungi!`
+        : `Which ${quantityNum} items should I add to ${normalized} list? 😊\nJust send the names and I will add them!`
+    })
+    return
+  }
+
   // ── Multi-item Parsing ──────────────────────────────────────
   const items = params.taskContent
     .split(/[\n,،\-\*•]+/) // newline, comma, dash, bullet

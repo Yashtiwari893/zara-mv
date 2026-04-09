@@ -817,6 +817,29 @@ export async function POST(req: NextRequest) {
             break
           }
 
+          const extractedTaskTitle = (typeof extractedData.taskContent === 'string' ? extractedData.taskContent : '').trim()
+          const isVagueQuantity = /\b(ek|do|teen|chaar|paanch|1|2|3|4|5)\s+(item|items|cheez|cheezein|chijen|task|tasks|kaam)\b/i.test(lowerMessage)
+            && !/\b(aur|and|,)\b/.test(lowerMessage)
+
+          if (isVagueQuantity && (!extractedTaskTitle || /^(ek|do|teen|chaar|paanch|1|2|3|4|5)\s+(item|items|cheez|cheezein|chijen|task|tasks|kaam)$/i.test(extractedTaskTitle))) {
+            const numMatch = lowerMessage.match(/\b(ek|do|teen|chaar|paanch|1|2|3|4|5)\b/i)
+            const quantity = ({ ek: '1', do: '2', teen: '3', chaar: '4', paanch: '5' } as Record<string, string>)[numMatch?.[1]?.toLowerCase() || ''] || numMatch?.[1] || 'kuch'
+            const targetList = extractedData.listName || extractKnownListName(lowerMessage) || ctx?.last_list_name || 'list'
+
+            await sendWhatsAppMessage({
+              to: cleanFromPhone,
+              message: lang === 'hi'
+                ? `${targetList} mein kaun se ${quantity} items add karne hain? 😊`
+                : `Which ${quantity} items should I add in ${targetList}? 😊`
+            })
+            await updateContext(user.id, {
+              last_intent: 'ADD_TASK',
+              last_list_name: extractedData.listName || extractKnownListName(lowerMessage) || ctx?.last_list_name || undefined,
+            })
+            isHandled = true
+            break
+          }
+
           const extractedTaskContent = typeof extractedData.taskContent === 'string'
             ? extractedData.taskContent.trim()
             : ''
@@ -851,9 +874,15 @@ export async function POST(req: NextRequest) {
 
         case 'LIST_TASKS':
           {
-          let fallbackListName = extractedData.listName || ''
+          const isGenericOwnershipListRequest = /\b(meri|mera|my|all|sab|sabhi|saari|poori)\b/i.test(lowerMessage)
+            && !/\b(grocery|task|office|shopping|work|personal|home|general|sabzi|kirana|kaam)\b/i.test(lowerMessage)
+
+          let fallbackListName = isGenericOwnershipListRequest ? '' : (extractedData.listName || '')
+          if (isGenericOwnershipListRequest) {
+            fallbackListName = ''
+          }
           if (!fallbackListName) {
-            fallbackListName = extractKnownListName(lowerMessage) || ''
+            fallbackListName = isGenericOwnershipListRequest ? '' : (extractKnownListName(lowerMessage) || '')
           }
           await handleListTasks({
             userId: user.id,
