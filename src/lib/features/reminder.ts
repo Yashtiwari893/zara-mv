@@ -75,8 +75,13 @@ export async function handleSetReminder(params: {
     return
   }
 
-  // Ask clarification when day, AM/PM, or clock time is missing for one-time reminders.
-  if (parsed && (parsed.isAmbiguous || parsed.missingDay || parsed.missingAmPm || parsed.missingTime) && !parsed.isRecurring) {
+  // Ask clarification only when parser is ambiguous and confidence is not strong enough.
+  // If parser already produced a concrete high-confidence date, trust it.
+  const shouldAskClarification = !parsed.isRecurring
+    && (parsed.isAmbiguous || parsed.missingDay || parsed.missingAmPm || parsed.missingTime)
+    && !(parsed.date && parsed.confidence >= 0.9)
+
+  if (shouldAskClarification) {
     await updateContext(userId, {
       pending_action: 'awaiting_reminder_clarify',
       pending_reminder: { dateTimeText: textToParse, reminderTitle, originalMessage: message },

@@ -953,9 +953,12 @@ export async function POST(req: NextRequest) {
         }
       } else {
         // Safety: avoid hallucinated factual data in free-form chat for task/list/reminder/document queries.
-        // If intent routing missed but user message clearly references structured data, ask a deterministic clarification.
+        // If intent routing missed but user message looks like a failed direct command, ask a deterministic clarification.
+        // Conversational/how-to/question messages should fall through to auto-responder naturally.
         const hasStructuredKeyword = /\b(list|lists|task|tasks|todo|grocery|shopping|reminder|reminders|alarm|document|documents|doc|docs|vault|file|files)\b/i.test(lowerMessage)
-        if (hasStructuredKeyword) {
+        const looksConversationalOrQuestion = /\b(kaise|kese|how\s*to|kya\s*hai|kya\s*hota\s*hai|karna\s*hai|set\s*karna|banana\s*hai|banani\s*hai|banate|banate\s*hain|want\s*to|chahiye|chahta|chahti|help\s*me|samjhao|sikhna|seekhna)\b/i.test(lowerMessage)
+        const looksLikeDirectCommand = /\b(dikhao|dikha|show|send|bhejo|delete|remove|hatao|mitao|cancel|list\s*do|de\s*do|get|nikalo|lao)\b/i.test(lowerMessage)
+        if (hasStructuredKeyword && looksLikeDirectCommand && !looksConversationalOrQuestion) {
           await sendWhatsAppMessage({
             to: cleanFromPhone,
             message: lang === 'hi'

@@ -55,7 +55,7 @@ const EMPTY: ParsedDateTime = {
 
 function getAmbiguityFlags(text: string) {
   const hasExplicitDay = /\b(kal|aaj|today|tomorrow|parso|monday|tuesday|wednesday|thursday|friday|saturday|sunday|som|mangal|budh|guru|shukra|shani|ravi|\d{1,2}\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)|\d{1,2}\/\d{1,2})\b/i.test(text)
-  const hasExplicitAmPm = /\b(am|pm|subah|dopahar|shaam|raat|morning|evening|night|afternoon)\b/i.test(text)
+  const hasExplicitAmPm = /\b(am|pm|subah|dopahar|shaam|sham|raat|morning|evening|night|afternoon|baje|bje|bajey)\b/i.test(text)
   const hasExplicitTime = /\b(?:\d{1,2}|ek|do|teen|chaar|char|paanch|panch|chhe|cheh|saat|aath|nau|das|gyarah|baraah|baarah)(?::\d{2})?\s*(?:am|pm|bje|baje|bajey)?\b/i.test(text)
 
   return {
