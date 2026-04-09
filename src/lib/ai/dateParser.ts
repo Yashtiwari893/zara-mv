@@ -192,6 +192,8 @@ function formatNowForPrompt(now: Date, timezone: string): string {
 function quickParse(text: string): ParsedDateTime | null {
   const lower = text.toLowerCase().trim()
   const now = new Date()
+  const inputText = text
+  const hasExplicitToday = /\b(today|aaj)\b/i.test(inputText)
 
   // ── Relative: "X seconds baad" ────────────────────────────
   const secMatch = lower.match(/^(\d+)\s*(?:sec(?:ond)?s?)\s*(?:baad|later|bad)?$/)
@@ -274,7 +276,7 @@ function quickParse(text: string): ParsedDateTime | null {
 
     // If no day keyword and the time is already past → push to tomorrow
     const isExplicitDay = /\b(kal|tomorrow|cal|parso|aaj|today)\b/.test(lower)
-    if (!isExplicitDay && istTarget.getTime() < istNow.getTime() - 60_000) {
+    if (!isExplicitDay && !hasExplicitToday && istTarget.getTime() < istNow.getTime() - 60_000) {
       parsed.setDate(parsed.getDate() + 1)
     }
 
@@ -389,16 +391,17 @@ Output ONLY this JSON object:
 // ─── ADVANCE DATE IF IN PAST ──────────────────────────────────
 // Pushes a past date forward to the next valid occurrence (next day, etc.)
 // Returns null if still in past after max reasonable adjustments.
-function resolveIfPast(parsedDate: Date, now: Date, hasExplicitToday: boolean = false): Date | null {
+function resolveIfPast(parsedDate: Date, now: Date, inputText: string = ''): Date | null {
   const fiveMinAgo = new Date(now.getTime() - 5 * 60_000)
   if (parsedDate >= fiveMinAgo) return parsedDate
 
-  // Respect explicit "today/aaj" requests — do not auto-advance to tomorrow.
-  if (hasExplicitToday) return parsedDate
+  const hasExplicitToday = /\b(today|aaj)\b/i.test(inputText)
 
   // Try advancing one day (most common case: user said "5 baje" meaning later today but Groq picked yesterday)
   const advanced = new Date(parsedDate.getTime())
-  advanced.setDate(advanced.getDate() + 1)
+  if (!hasExplicitToday) {
+    advanced.setDate(advanced.getDate() + 1)
+  }
 
   if (advanced >= fiveMinAgo) {
     console.warn('[dateParser] Past time detected — advanced by 1 day:', {
@@ -425,7 +428,6 @@ export async function parseDateTime(
   const cleanText = text.trim()
   const normalizedText = normalizeHindiTimeText(cleanText.toLowerCase())
   const ambiguityFlags = getAmbiguityFlags(normalizedText)
-  const hasExplicitToday = /\b(today|aaj|aaj\s*ka|abhi)\b/i.test(cleanText)
 
   // ── GUARDRAIL 2: Text too long ────────────────────────────
   if (cleanText.length > 300) {
@@ -510,7 +512,7 @@ export async function parseDateTime(
 
     // ── GUARDRAIL 7: Resolve past dates ───────────────────────
     if (parsedDate) {
-      const resolved = resolveIfPast(parsedDate, now, hasExplicitToday)
+      const resolved = resolveIfPast(parsedDate, now, cleanText)
       if (resolved === null) {
         return { ...EMPTY, humanReadable: cleanText }
       }
