@@ -566,11 +566,12 @@ export async function POST(req: NextRequest) {
     const isTaskOrReminderContext = /\b(task|list|grocery|todo|kaam|saaman|reminder|reminders|yaad|tasks|lists)\b/i.test(lowerMessage)
     const isDeleteContext = /\b(task|list|grocery|todo|tasks)\b/i.test(lowerMessage)
 
-    // Negation/complaint guard — "maine X nahi bola", "mene X ko bola hi nhi", "I didn't say X"
-    // These are user corrections/complaints, not commands. Never treat as actionable intents.
-    const isNegationOrComplaint = /\b(nahi|nhi|nahin|never|bola\s+hi\s+nhi|bola\s+nahi|nai\s+bola|didn't|did\s+not|not\s+asked|nai\s+kaha|nahi\s+kaha)\b/i.test(lowerMessage)
+    // Complaint/past-tense guard — corrections and already-done actions are not new commands.
+    const isPastTenseOrComplaint = /\b(nahi|nhi|nahin|never|bola\s+hi\s+nhi|bola\s+nahi|nai\s+bola|didn't|did\s+not|not\s+asked|nai\s+kaha|nahi\s+kaha|kr\s+diya\s+tha|kar\s+diya\s+tha|kiya\s+tha|hataya\s+tha|mitaya\s+tha|ho\s+gaya\s+tha|ho\s+gayi\s+thi|diya\s+tha|liya\s+tha|chuka|chuki|chuke|already|pehle\s+hi|pahle\s+hi)\b/i.test(lowerMessage)
+    const isPastTenseAction = /\b(delete|hatao|mitao|remove|hata)\b/i.test(lowerMessage)
+      && /\b(tha|thi|the|chuka|chuki|chuke|already|pehle|pahle|kr\s+diya|kar\s+diya|ho\s+gaya|ho\s+gayi)\b/i.test(lowerMessage)
 
-    const isVaultDelete = !isNegationOrComplaint
+    const isVaultDelete = !isPastTenseOrComplaint && !isPastTenseAction
       && /\b(vault|documents?|docs?|files?)\b/i.test(lowerMessage)
       && /\b(delete|hatao|mitao|remove|clear)\b/i.test(lowerMessage)
 
@@ -592,7 +593,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Deletion override — only for documents, not tasks/lists, and never for complaints/negations
-    if (!isDeleteContext && !isNegationOrComplaint && (
+    if (!isDeleteContext && !isPastTenseOrComplaint && !isPastTenseAction && (
       lowerMessage.includes('delete') || lowerMessage.includes('hatao') ||
       lowerMessage.includes('mitao') || lowerMessage.includes('remove') ||
       lowerMessage.includes('vault delete') || lowerMessage.includes('vault hatao')
@@ -605,7 +606,7 @@ export async function POST(req: NextRequest) {
 
     // DELETE_DOCUMENT bulk override — "sab documents delete", "vault delete", "sab hatao"
     // MUST have explicit document keyword (vault/docs/files) — bare "sab delete" is ambiguous
-    const isAllDocDelete = !isNegationOrComplaint
+    const isAllDocDelete = !isPastTenseOrComplaint && !isPastTenseAction
       && /\b(mera vault|vault|documents?|docs?|files?)\b/i.test(lowerMessage)
       && /\b(sab|all|saari|pure)?\b/i.test(lowerMessage)
       && /\b(delete|hatao|mitao|remove|clear)\b/i.test(lowerMessage)
