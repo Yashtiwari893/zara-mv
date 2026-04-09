@@ -425,7 +425,7 @@ export async function parseDateTime(
   const cleanText = text.trim()
   const normalizedText = normalizeHindiTimeText(cleanText.toLowerCase())
   const ambiguityFlags = getAmbiguityFlags(normalizedText)
-  const hasExplicitToday = /\b(today|aaj|aaj\s+ka|is\s+waqt|abhi)\b/i.test(normalizedText)
+  const hasExplicitToday = /\b(today|aaj|aaj\s*ka|abhi)\b/i.test(cleanText)
 
   // ── GUARDRAIL 2: Text too long ────────────────────────────
   if (cleanText.length > 300) {
