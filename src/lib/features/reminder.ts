@@ -251,22 +251,69 @@ export async function handleSnoozeReminder(params: {
   language: Language
   minutes?: number
   customText?: string
+  originalMessage?: string
+  reminderTitle?: string
   prefix?: string
 }) {
-  const { reminderId, userId, phone, language, minutes, customText, prefix = '' } = params
+  const { reminderId, userId, phone, language, minutes, customText, originalMessage, reminderTitle, prefix = '' } = params
   let targetReminderId = reminderId
 
   if (!targetReminderId && userId) {
-    const { data: recent } = await supabase
+    const { data: reminders } = await supabase
       .from('reminders')
-      .select('id')
+      .select('id, title, scheduled_at, status')
       .eq('user_id', userId)
       .in('status', ['sent', 'pending'])
       .order('scheduled_at', { ascending: false })
-      .limit(1)
-      .single()
+      .limit(30)
 
-    if (recent) targetReminderId = recent.id
+    if (reminders && reminders.length > 0) {
+      const sourceText = (originalMessage || customText || '').trim()
+      const rescheduleMarkers = /(?:reschedule|change|badal|shift|move|kar\s*do|karo|kr\s*do|bana\s*do|set\s*kar)/i
+      const timePattern = /\b((?:today|aaj|tomorrow|kal|parso)?\s*\d{1,2}(?::\d{2})?\s*(?:am|pm|baje|bje|bajey))\b/gi
+
+      // Priority 2: match by reference/old time mentioned by user (e.g., "5 pm wala ... 6 pm kar do").
+      let referenceTimeText: string | null = null
+      if (sourceText) {
+        const marker = sourceText.match(rescheduleMarkers)
+        if (marker && marker.index !== undefined) {
+          const beforeMarker = sourceText.substring(0, marker.index)
+          const beforeTimes = [...beforeMarker.matchAll(timePattern)]
+          if (beforeTimes.length > 0) referenceTimeText = beforeTimes[beforeTimes.length - 1][1].trim()
+        }
+
+        if (!referenceTimeText) {
+          const allTimes = [...sourceText.matchAll(timePattern)]
+          if (allTimes.length >= 2) {
+            referenceTimeText = allTimes[0][1].trim()
+          }
+        }
+      }
+
+      if (referenceTimeText) {
+        const parsedReference = await parseDateTime(referenceTimeText)
+        if (parsedReference?.date) {
+          const targetTs = parsedReference.date.getTime()
+          const byTime = reminders.find((r) => Math.abs(new Date(r.scheduled_at).getTime() - targetTs) <= 90 * 60 * 1000)
+          if (byTime) targetReminderId = byTime.id
+        }
+      }
+
+      // Priority 3: match by title when title is meaningful (not generic "reminder").
+      if (!targetReminderId && reminderTitle) {
+        const normalizedTitle = reminderTitle.toLowerCase().trim()
+        const isGenericTitle = /^(reminder|reminders|yaad|alarm)$/i.test(normalizedTitle)
+        if (!isGenericTitle) {
+          const byTitle = reminders.find((r) => (r.title || '').toLowerCase().includes(normalizedTitle))
+          if (byTitle) targetReminderId = byTitle.id
+        }
+      }
+
+      // Priority 4: fallback to most recent reminder.
+      if (!targetReminderId) {
+        targetReminderId = reminders[0].id
+      }
+    }
   }
 
   if (!targetReminderId) {

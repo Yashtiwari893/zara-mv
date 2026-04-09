@@ -817,6 +817,8 @@ export async function POST(req: NextRequest) {
             language: lang,
             minutes: extractedData.snoozeMinutes,
             customText: rescheduleTarget || extractedData.dateTimeText || processedMessage,
+            originalMessage: processedMessage,
+            reminderTitle: extractedData.reminderTitle || undefined,
             prefix: abuseWarning
           })
           isHandled = true

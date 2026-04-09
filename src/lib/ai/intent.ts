@@ -40,6 +40,8 @@ GET_BRIEFING, HELP, UNKNOWN
   "3 baje wala 5 baje shift karo" -> dateTimeText should be "5 baje" (the NEW time only)
   ALWAYS extract only the TARGET/NEW time in dateTimeText, never the reference/old time.
   The old time is just for identifying which reminder to reschedule.
+  For time-only references ("5 pm wala reminder") set reminderTitle to empty/null (do not set generic "Reminder").
+  For title-based references ("call Denish wala reminder") set reminderTitle to the actual title ("call Denish").
 
 - "X bje vala done/complete ho gya" → CANCEL_REMINDER (user is marking reminder as done = cancel it)
 - "X reminder complete" → CANCEL_REMINDER, NOT COMPLETE_TASK
@@ -186,10 +188,13 @@ Message: "Snooze kar do 30 min"
 → {"intent":"SNOOZE_REMINDER","confidence":0.95,"extractedData":{"snoozeMinutes":30}}
 
 Message: "5 pm wala reminder 6 PM kar do"
-→ {"intent":"SNOOZE_REMINDER","confidence":0.95,"extractedData":{"dateTimeText":"6 PM"}}
+→ {"intent":"SNOOZE_REMINDER","confidence":0.95,"extractedData":{"dateTimeText":"6 PM","snoozeMinutes":null}}
+
+Message: "call Denish wala reminder reschedule kar do 7 pm"
+→ {"intent":"SNOOZE_REMINDER","confidence":0.95,"extractedData":{"reminderTitle":"call Denish","dateTimeText":"7 pm"}}
 
 Message: "aaj 3 baje wala reminder 5 baje shift karo"
-→ {"intent":"SNOOZE_REMINDER","confidence":0.95,"extractedData":{"dateTimeText":"5 baje"}}
+→ {"intent":"SNOOZE_REMINDER","confidence":0.95,"extractedData":{"dateTimeText":"5 baje","snoozeMinutes":null}}
 
 Message: "today 2pm reminder change to 4pm"
 → {"intent":"SNOOZE_REMINDER","confidence":0.95,"extractedData":{"dateTimeText":"4pm"}}
