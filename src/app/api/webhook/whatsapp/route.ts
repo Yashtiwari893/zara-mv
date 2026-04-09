@@ -923,6 +923,41 @@ export async function POST(req: NextRequest) {
             isHandled = true
             break
           }
+
+          // Guard: quantity + generic placeholder noun (e.g., "do product", "tin item")
+          // means user has not provided specific item names yet.
+          const hindiNumbers = '(?:ek|do|teen|tin|char|chaar|paanch|panch|chhe|cheh|saat|aath|nau|das|gyarah|barah|\\d{1,2})'
+          const genericNouns = '(?:product|products|item|items|cheez|cheezein|cheezon|chiz|chizon|saman|samaan|kaam|thing|things|task|tasks)'
+          const quantityPlaceholderPattern = new RegExp(`^\\s*${hindiNumbers}\\s+${genericNouns}\\s*$`, 'i')
+          const cleanedFullMessage = processedMessage
+            .replace(/\b(grocery|task|office|shopping|work|personal|home|general|list|mein|me|mujhe|add|karo|kar|karna|hai|please|plz)\b/gi, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+
+          const contentToCheck = rawTaskContent.trim().toLowerCase()
+          const isQuantityPlaceholder = quantityPlaceholderPattern.test(contentToCheck)
+            || quantityPlaceholderPattern.test(cleanedFullMessage)
+
+          if (isQuantityPlaceholder) {
+            const numMatch = contentToCheck.match(/^(\S+)/)
+            const numWord = (numMatch?.[1] || '').toLowerCase()
+            const numMap: Record<string, string> = {
+              ek: '1', do: '2', teen: '3', tin: '3', char: '4', chaar: '4',
+              paanch: '5', panch: '5', chhe: '6', cheh: '6', saat: '7',
+              aath: '8', nau: '9', das: '10', gyarah: '11', barah: '12'
+            }
+            const displayNum = numMap[numWord] || numWord || 'some'
+
+            await sendWhatsAppMessage({
+              to: cleanFromPhone,
+              message: abuseWarning + (lang === 'hi'
+                ? `❓ Kaunse ${displayNum} items add karne hain? Specific naam batao jaise:\n_"milk, bread, eggs"_\n_"doodh, atta, chini"_`
+                : `❓ Which ${displayNum} items do you want to add? Please name them like:\n_"milk, bread, eggs"_`)
+            })
+            isHandled = true
+            break
+          }
+
           await handleAddTask({
             userId: user.id,
             phone: cleanFromPhone,
