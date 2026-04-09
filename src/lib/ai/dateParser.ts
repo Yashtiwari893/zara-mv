@@ -242,7 +242,7 @@ function quickParse(text: string): ParsedDateTime | null {
 
   // ── One-shot: "kal/aaj/parso + time" ─────────────────────────────────
   // Pattern: (kal|aaj|parso)? digit (optional :mm) (period marker)
-  const ONE_SHOT_TIME_RE = /\b(kal|aaj|today|tomorrow|parso|cal)?\b.*?\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|bje|baje|bajey)\b/i
+  const ONE_SHOT_TIME_RE = /\b(kal|aaj|today|tomorrow|parso|cal)?\b.*?\b(\d{1,2})(?::(\d{2}))?\s*(a\.m\.|p\.m\.|am|pm|bje|baje|bajey)\b/i
   const oneShotMatch = lower.match(ONE_SHOT_TIME_RE)
 
   if (oneShotMatch) {
@@ -250,7 +250,9 @@ function quickParse(text: string): ParsedDateTime | null {
 
     // Extract properly using the core util
     // Construct a pseudo-match array for extractTime: [full, hour, min, period]
-    const pseudoMatch = [oneShotMatch[0], oneShotMatch[2], oneShotMatch[3], oneShotMatch[4]] as unknown as RegExpMatchArray
+    const rawPeriod = oneShotMatch[4] || ''
+    const normalizedPeriod = rawPeriod.replace(/\./g, '').toLowerCase() // "p.m." -> "pm"
+    const pseudoMatch = [oneShotMatch[0], oneShotMatch[2], oneShotMatch[3], normalizedPeriod] as unknown as RegExpMatchArray
     const timeStr = extractTime(pseudoMatch, lower)
     // Create date and force it to be IST by calculating the offset
     const targetDate = new Date(now)
@@ -397,11 +399,15 @@ function resolveIfPast(parsedDate: Date, now: Date, inputText: string = ''): Dat
 
   const hasExplicitToday = /\b(today|aaj)\b/i.test(inputText)
 
-  // Try advancing one day (most common case: user said "5 baje" meaning later today but Groq picked yesterday)
-  const advanced = new Date(parsedDate.getTime())
-  if (!hasExplicitToday) {
-    advanced.setDate(advanced.getDate() + 1)
+  // If user explicitly said "today", honor it even if time has passed
+  if (hasExplicitToday) {
+    console.warn('[dateParser] Explicit today — keeping past time as-is:', parsedDate.toISOString())
+    return parsedDate
   }
+
+  // No explicit today — try advancing one day
+  const advanced = new Date(parsedDate.getTime())
+  advanced.setDate(advanced.getDate() + 1)
 
   if (advanced >= fiveMinAgo) {
     console.warn('[dateParser] Past time detected — advanced by 1 day:', {
@@ -412,7 +418,7 @@ function resolveIfPast(parsedDate: Date, now: Date, inputText: string = ''): Dat
   }
 
   // Still in past — don't return stale data
-  console.warn('[dateParser] Date still in past after +1 day adjustment — discarding')
+  console.warn('[dateParser] Date still in past after +1 day — discarding')
   return null
 }
 
