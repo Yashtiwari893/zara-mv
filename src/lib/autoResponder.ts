@@ -423,7 +423,7 @@ export async function generateAutoResponse(
     // ── HARD FILTER: Block hallucinated action confirmations ──────
     const isHindi = /\b(hai|karo|karna|mein|meri|mujhe|chahiye|chahte|bolo|bola|kya)\b/i.test(safeUserText)
     if (reply) {
-      const isHallucination = HALLUCINATION_PATTERNS.some(pattern => pattern.test(reply))
+      const isHallucination = HALLUCINATION_PATTERNS.some(pattern => pattern.test(reply!))
       if (isHallucination) {
         console.warn('[autoResponder] Blocked hallucinated action confirmation:', reply.substring(0, 80))
         reply = isHindi
