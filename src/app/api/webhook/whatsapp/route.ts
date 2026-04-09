@@ -352,16 +352,36 @@ export async function POST(req: NextRequest) {
       const isNo  = /^(nahi|nhi|nahin|no|n|cancel|rukao|ruk|mat\s*karo|band\s*karo|rehne\s*do|chodo|chordo|naa|na|don'?t|mana\s*hai|nai|nope)$/i.test(lowerMsg)
 
       if (isYes) {
-        await clearPendingAction(user.id)
         // Execute the stored delete
         if (pd.intent === 'DELETE_LIST') {
+          await clearPendingAction(user.id)
           await handleDeleteList({ userId: user.id, phone: cleanFromPhone, language: lang, listName: pd.listName || '', isBulk: !!pd.isBulk })
         } else if (pd.intent === 'DELETE_DOCUMENT') {
+          await clearPendingAction(user.id)
           await handleDeleteDocument({ userId: user.id, phone: cleanFromPhone, language: lang, query: pd.query || '' })
         } else if (pd.intent === 'CANCEL_REMINDER') {
+          await clearPendingAction(user.id)
           await handleCancelReminder({ userId: user.id, phone: cleanFromPhone, language: lang, titleHint: pd.titleHint, isGenericSearch: pd.isGenericSearch })
         } else if (pd.intent === 'DELETE_TASK') {
-          await handleDeleteTask({ userId: user.id, phone: cleanFromPhone, language: lang, taskContent: pd.taskContent || '' })
+          const pendingTask = (pd.taskContent || '').trim()
+          if (!pendingTask) {
+            await sendWhatsAppMessage({
+              to: cleanFromPhone,
+              message: lang === 'hi'
+                ? '❓ Konsa task delete karna hai? Task ka exact naam bata do.'
+                : '❓ Which task should I delete? Please share the exact task name.'
+            })
+            return NextResponse.json({ ok: true })
+          }
+          await clearPendingAction(user.id)
+          await handleDeleteTask({
+            userId: user.id,
+            phone: cleanFromPhone,
+            language: lang,
+            taskContent: pendingTask,
+            listName: pd.listName,
+            suppressPromptOnMissing: true,
+          })
         }
       } else if (isNo) {
         await clearPendingAction(user.id)
@@ -818,19 +838,20 @@ export async function POST(req: NextRequest) {
           }
 
           const extractedTaskTitle = (typeof extractedData.taskContent === 'string' ? extractedData.taskContent : '').trim()
-          const isVagueQuantity = /\b(ek|do|teen|chaar|paanch|1|2|3|4|5)\s+(item|items|cheez|cheezein|chijen|task|tasks|kaam)\b/i.test(lowerMessage)
-            && !/\b(aur|and|,)\b/.test(lowerMessage)
+          const quantityOnlyMatch = lowerMessage.match(/\b(ek|do|teen|chaar|paanch|1|2|3|4|5)\s+(item|items|cheez|cheezein|chijen|kaam|task|tasks)\b/i)
+          const hasActualItems = /\b(aur|and|,|:)\b/.test(lowerMessage)
+            || (extractedTaskTitle.length > 0 && !/^(ek|do|teen|chaar|paanch|item|items|cheez|cheezein|chijen|task|tasks|kaam|1|2|3|4|5|\s)+$/i.test(extractedTaskTitle))
 
-          if (isVagueQuantity && (!extractedTaskTitle || /^(ek|do|teen|chaar|paanch|1|2|3|4|5)\s+(item|items|cheez|cheezein|chijen|task|tasks|kaam)$/i.test(extractedTaskTitle))) {
-            const numMatch = lowerMessage.match(/\b(ek|do|teen|chaar|paanch|1|2|3|4|5)\b/i)
-            const quantity = ({ ek: '1', do: '2', teen: '3', chaar: '4', paanch: '5' } as Record<string, string>)[numMatch?.[1]?.toLowerCase() || ''] || numMatch?.[1] || 'kuch'
+          if (quantityOnlyMatch && !hasActualItems) {
+            const numWord = quantityOnlyMatch[1].toLowerCase()
+            const quantity = ({ ek: '1', do: '2', teen: '3', chaar: '4', paanch: '5' } as Record<string, string>)[numWord] || numWord
             const targetList = extractedData.listName || extractKnownListName(lowerMessage) || ctx?.last_list_name || 'list'
 
             await sendWhatsAppMessage({
               to: cleanFromPhone,
               message: lang === 'hi'
-                ? `${targetList} mein kaun se ${quantity} items add karne hain? 😊`
-                : `Which ${quantity} items should I add in ${targetList}? 😊`
+                ? `${targetList} mein kaun se ${quantity} items add karne hain? 😊\nBas naam bata do!`
+                : `Which ${quantity} items should I add in ${targetList}? 😊\nJust send the names!`
             })
             await updateContext(user.id, {
               last_intent: 'ADD_TASK',
@@ -874,6 +895,20 @@ export async function POST(req: NextRequest) {
 
         case 'LIST_TASKS':
           {
+          const isDefinitelyAllLists = /^(list\s*(dikha|dikhao|batao|show|bhejo|dekh|dekho)?|show\s*(my\s*)?lists?|meri\s*lists?\s*(dikha|dikhao|show)?|meri\s*list\s*(dikha|dikhao|show)?)$/i.test(lowerMessage.trim())
+          if (isDefinitelyAllLists) {
+            await handleListTasks({
+              userId: user.id,
+              phone: cleanFromPhone,
+              language: lang,
+              listName: '',
+              isGenericSearch: true,
+              prefix: abuseWarning,
+            })
+            isHandled = true
+            break
+          }
+
           const isGenericOwnershipListRequest = /\b(meri|mera|my|all|sab|sabhi|saari|poori)\b/i.test(lowerMessage)
             && !/\b(grocery|task|office|shopping|work|personal|home|general|sabzi|kirana|kaam)\b/i.test(lowerMessage)
 
@@ -909,12 +944,13 @@ export async function POST(req: NextRequest) {
 
         case 'DELETE_TASK': {
           const taskToDelete = extractedData.taskContent || processedMessage
+          const listToDeleteFrom = extractedData.listName || extractKnownListName(lowerMessage) || undefined
           const confirmMsg = lang === 'hi'
             ? `🗑️ Kya aap *"${taskToDelete}"* task delete karna chahte ho?`
             : `🗑️ Are you sure you want to delete the task *"${taskToDelete}"*?`
           await updateContext(user.id, {
             pending_action: 'awaiting_delete_confirm',
-            pending_delete: { intent: 'DELETE_TASK', taskContent: taskToDelete, confirmMessage: confirmMsg } as PendingDelete,
+            pending_delete: { intent: 'DELETE_TASK', taskContent: taskToDelete, listName: listToDeleteFrom, confirmMessage: confirmMsg } as PendingDelete,
           })
           await sendWhatsAppMessage({
             to: cleanFromPhone,

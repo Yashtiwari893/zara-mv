@@ -62,12 +62,17 @@ export async function handleAddTask(params: {
   const normalizedLower = normalized.toLowerCase()
 
   const rawTaskTitle = (params.taskContent || '').trim()
+  const normalizedTaskHint = rawTaskTitle
+    .toLowerCase()
+    .replace(/\b(grocery|task|office|shopping|work|personal|home|general|list|mein|me|add|karo|kar|karna|daal|daalo|dalni|hain|hai|please|plz)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
   const QUANTITY_ONLY_PATTERNS = [
     /^(ek|do|teen|chaar|paanch|che|saat|aath|nau|das|1|2|3|4|5|6|7|8|9|10)\s+(item|items|cheez|cheezein|chijen|task|tasks|kaam)$/i,
     /^(a\s+few|some|few|multiple|kai|thodi)\s+(item|items|cheez|task|tasks)$/i,
     /^(do|teen|chaar)\s+(item|items)$/i,
   ]
-  const isQuantityPlaceholder = QUANTITY_ONLY_PATTERNS.some((p) => p.test(rawTaskTitle))
+  const isQuantityPlaceholder = QUANTITY_ONLY_PATTERNS.some((p) => p.test(rawTaskTitle) || p.test(normalizedTaskHint))
 
   if (isQuantityPlaceholder || !rawTaskTitle || rawTaskTitle.length < 2) {
     const quantityMatch = rawTaskTitle.match(/\b(ek|do|teen|chaar|paanch|1|2|3|4|5)\b/i)
@@ -217,7 +222,7 @@ export async function handleAddTask(params: {
 
   await sendWhatsAppMessage({
     to: phone,
-    message: prefix + taskAdded(taskContent, listName, language)
+    message: prefix + taskAdded(taskContent, finalListName, language)
   })
 }
 
@@ -273,10 +278,6 @@ export async function handleListTasks(params: {
   // ── 2. FUZZY FALLBACK ─────────────────────────────────────
   // If no exact/partial list found, show all lists to help them
   if (!list) {
-    const listHint = language === 'hi' 
-      ? `"${listName}" naam ki list nahi mili. Aapki playlists:` 
-      : `Couldn't find a list named "${listName}". Here are your lists:`
-    
     return await handleListAllLists({ userId, phone, language })
   }
 
@@ -396,8 +397,9 @@ export async function handleDeleteTask(params: {
   taskContent: string
   listName?: string
   prefix?: string
+  suppressPromptOnMissing?: boolean
 }) {
-  const { userId, phone, language, listName, prefix = '' } = params
+  const { userId, phone, language, listName, prefix = '', suppressPromptOnMissing = false } = params
   
   // Strip action keywords from task content
   const rawTaskContent = params.taskContent
@@ -406,8 +408,9 @@ export async function handleDeleteTask(params: {
     .trim()
   
   // Reject if nothing meaningful left or it's a generic word
-  const genericTerms = ['task', 'tasks', 'item', 'items', 'all', 'everything', 'sab', 'saari', 'saare', 'list', 'lists']
+  const genericTerms = ['task', 'tasks', 'all', 'everything', 'sab', 'saari', 'saare', 'list', 'lists']
   if (!rawTaskContent || genericTerms.includes(rawTaskContent.toLowerCase())) {
+    if (suppressPromptOnMissing) return
     await sendWhatsAppMessage({
       to: phone,
       message: prefix + (language === 'hi'
