@@ -24,12 +24,14 @@ import { logger, setTraceId } from '@/lib/infrastructure/logger'
 import { createErrorResponse } from '@/lib/infrastructure/errorHandler'
 import { validatePhone, validatePlainText } from '@/lib/infrastructure/inputValidator'
 import { retryWithExponentialBackoff } from '@/lib/infrastructure/errorHandler'
+import { createRateLimiter, rateLimiterConfigs } from '@/lib/infrastructure/rateLimiter'
 import { getContext, updateContext, addToHistory, clearPendingAction } from '@/lib/infrastructure/sessionContext'
 import type { PendingDelete, PendingMultiReminder, PendingReminderClarify } from '@/lib/infrastructure/sessionContext'
 import type { Language } from '@/types'
 
 const supabaseAdmin = getSupabaseClient()
 const recentlyProcessed = new Map<string, number>()
+const webhookRateLimiter = createRateLimiter(rateLimiterConfigs.webhook)
 
 // BUG FIX: Proper MIME type resolver - was hardcoded 'image/jpeg' before
 function resolveMimeType(rawMime?: string | null, subType?: string | null): string {
@@ -180,6 +182,19 @@ export async function POST(req: NextRequest) {
     } catch {
       logger.warn('Invalid phone format', { phone, to })
       return NextResponse.json({ ok: true })
+    }
+
+    // ─── RATE LIMITING (anti-spam / cost guard) ─────────────────
+    // Key by sender->receiver pair so one abusive sender cannot flood downstream AI/DB costs.
+    const rateLimitKey = `${cleanFromPhone}:${cleanToPhone}`
+    const isRateLimited = await webhookRateLimiter.isLimited(rateLimitKey)
+    if (isRateLimited) {
+      const retryAfter = webhookRateLimiter.getRetryAfter(rateLimitKey) ?? 60
+      logger.warn('Webhook rate limit exceeded', { traceId, from: cleanFromPhone, to: cleanToPhone, retryAfter })
+      return NextResponse.json(
+        { error: 'Too many requests' },
+        { status: 429, headers: { 'Retry-After': String(retryAfter) } }
+      )
     }
 
     // ─── ATOMIC DEDUPLICATION ─────────────────────────────
