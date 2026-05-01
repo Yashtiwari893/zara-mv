@@ -10,6 +10,7 @@ export interface PendingDelete {
   isBulk?: boolean
   query?: string
   titleHint?: string
+  dateTimeHint?: string
   isGenericSearch?: boolean
   taskContent?: string
   confirmMessage?: string   // human-readable summary shown to user before confirmation

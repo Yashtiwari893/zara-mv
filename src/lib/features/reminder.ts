@@ -14,6 +14,9 @@ import { APP } from '@/config'
 
 const supabase = getSupabaseClient()
 const DUPLICATE_TIME_WINDOW_MS = 10 * 60 * 1000
+const REMINDER_MATCH_WINDOW_MS = 90 * 60 * 1000
+
+type DayScope = 'today' | 'tomorrow' | 'day_after_tomorrow'
 
 // ─── TITLE CLEANER ────────────────────────────────────────────
 
@@ -47,6 +50,26 @@ function cleanReminderTitle(raw: string): string {
 
   // Final sanity: if still empty, use a generic but safe label
   return cleaned.length > 1 ? cleaned : 'Reminder'
+}
+
+function parseDayScope(text?: string): DayScope | null {
+  if (!text) return null
+  const lower = text.toLowerCase()
+  if (/\b(aaj|today)\b/.test(lower)) return 'today'
+  if (/\b(kal|tomorrow|cal)\b/.test(lower)) return 'tomorrow'
+  if (/\b(parso|day after tomorrow)\b/.test(lower)) return 'day_after_tomorrow'
+  return null
+}
+
+function isSameIstDay(date: Date, dayScope: DayScope): boolean {
+  const now = new Date()
+  const target = new Date(now)
+  if (dayScope === 'tomorrow') target.setDate(target.getDate() + 1)
+  if (dayScope === 'day_after_tomorrow') target.setDate(target.getDate() + 2)
+
+  const dateStr = date.toLocaleDateString('en-CA', { timeZone: APP.DEFAULT_TIMEZONE })
+  const targetStr = target.toLocaleDateString('en-CA', { timeZone: APP.DEFAULT_TIMEZONE })
+  return dateStr === targetStr
 }
 
 // ─── SET REMINDER ─────────────────────────────────────────────
@@ -195,17 +218,19 @@ export async function handleListReminders(params: {
   userId: string
   phone: string
   language: Language
+  titleHint?: string
+  dateTimeHint?: string
+  rawQuery?: string
   prefix?: string
 }) {
-  const { userId, phone, language, prefix = '' } = params
+  const { userId, phone, language, titleHint, dateTimeHint, rawQuery, prefix = '' } = params
 
   const { data, error } = await supabase
     .from('reminders')
-    .select('title, scheduled_at, recurrence')
+    .select('id, title, scheduled_at, recurrence')
     .eq('user_id', userId)
     .eq('status', 'pending')
     .order('scheduled_at', { ascending: true })
-    .limit(10)
 
   if (error) {
     await sendWhatsAppMessage({ to: phone, message: prefix + errorMessage(language) })
@@ -223,10 +248,74 @@ export async function handleListReminders(params: {
   }
 
   const reminders = data.map(r => ({
+    id: r.id,
     title: r.title,
     scheduledAt: new Date(r.scheduled_at),
     recurrence: r.recurrence
   }))
+
+  const dayScope = parseDayScope(dateTimeHint || rawQuery)
+  const reminderTitleHint = (titleHint || '').trim().toLowerCase()
+  const hasSpecificRequest = Boolean(reminderTitleHint || dateTimeHint)
+
+  let filtered = reminders
+
+  if (dayScope) {
+    filtered = filtered.filter((r) => isSameIstDay(r.scheduledAt, dayScope))
+  }
+
+  if (dateTimeHint) {
+    const parsedTarget = await parseDateTime(dateTimeHint)
+    if (parsedTarget?.date) {
+      const targetTs = parsedTarget.date.getTime()
+      filtered = filtered.filter((r) => Math.abs(r.scheduledAt.getTime() - targetTs) <= REMINDER_MATCH_WINDOW_MS)
+    }
+  }
+
+  if (reminderTitleHint) {
+    filtered = filtered.filter((r) => r.title.toLowerCase().includes(reminderTitleHint))
+  }
+
+  if (hasSpecificRequest) {
+    if (filtered.length === 0) {
+      await sendWhatsAppMessage({
+        to: phone,
+        message: prefix + 'Koi reminder nahi mila is description ke liye'
+      })
+      return
+    }
+
+    if (filtered.length > 1) {
+      const lines = filtered.map((r, i) => {
+        const time = r.scheduledAt.toLocaleString('en-IN', {
+          timeZone: APP.DEFAULT_TIMEZONE,
+          dateStyle: 'medium',
+          timeStyle: 'short'
+        })
+        return `${i + 1}. *${r.title}*\n   📅 ${time}`
+      }).join('\n\n')
+
+      await sendWhatsAppMessage({
+        to: phone,
+        message: prefix + (language === 'hi'
+          ? `Mujhe ${filtered.length} reminders mile. Kaunsa chahiye?\n\n${lines}`
+          : `I found ${filtered.length} reminders. Which one did you mean?\n\n${lines}`)
+      })
+      return
+    }
+
+    const only = filtered[0]
+    const oneTime = only.scheduledAt.toLocaleString('en-IN', {
+      timeZone: APP.DEFAULT_TIMEZONE,
+      dateStyle: 'medium',
+      timeStyle: 'short'
+    })
+    await sendWhatsAppMessage({
+      to: phone,
+      message: prefix + `⏰ *${only.title}*\n📅 ${oneTime}`
+    })
+    return
+  }
 
   const lines = reminders.map((r, i) => {
     const time = r.scheduledAt.toLocaleString('en-IN', {
@@ -470,10 +559,11 @@ export async function handleCancelReminder(params: {
   phone: string
   language: Language
   titleHint?: string
+  dateTimeHint?: string
   isGenericSearch?: boolean
   prefix?: string
 }) {
-  const { userId, phone, language, titleHint, isGenericSearch, prefix = '' } = params
+  const { userId, phone, language, titleHint, dateTimeHint, isGenericSearch, prefix = '' } = params
 
   // ─── CASE 1: BULK CANCEL (All reminders) ────────────────────
   // Check both isGenericSearch flag AND titleHint content for bulk keywords
@@ -519,25 +609,57 @@ export async function handleCancelReminder(params: {
   }
 
   // ─── CASE 2: CANCEL BY TITLE ────────────────────────────────
-  if (titleHint) {
-    const { data: found } = await supabase
+  if (titleHint || dateTimeHint) {
+    const { data: pending } = await supabase
       .from('reminders')
-      .select('id, title')
+      .select('id, title, scheduled_at')
       .eq('user_id', userId)
       .eq('status', 'pending')
-      .ilike('title', `%${titleHint}%`)
-      .limit(1)
-      .single()
+      .order('scheduled_at', { ascending: true })
 
-    if (!found) {
+    const dayScope = parseDayScope(dateTimeHint)
+    const title = (titleHint || '').trim().toLowerCase()
+    const parsedTarget = dateTimeHint ? await parseDateTime(dateTimeHint) : null
+    const targetTs = parsedTarget?.date?.getTime()
+
+    const matches = (pending || []).filter((row) => {
+      const when = new Date(row.scheduled_at)
+      const dayMatch = dayScope ? isSameIstDay(when, dayScope) : true
+      const timeMatch = targetTs ? Math.abs(when.getTime() - targetTs) <= REMINDER_MATCH_WINDOW_MS : true
+      const titleMatch = title ? row.title.toLowerCase().includes(title) : true
+      return dayMatch && timeMatch && titleMatch
+    })
+
+    if (matches.length === 0) {
       await sendWhatsAppMessage({
         to: phone,
         message: prefix + (language === 'hi'
-          ? `❓ "${titleHint}" naam ka koi pending reminder nahi mila।`
-          : `❓ No pending reminder found matching "${titleHint}".`)
+          ? '❓ Koi pending reminder nahi mila is description ke liye.'
+          : '❓ No pending reminder found for that description.')
       })
       return
     }
+
+    if (matches.length > 1) {
+      const options = matches.map((row, i) => {
+        const when = new Date(row.scheduled_at).toLocaleString('en-IN', {
+          timeZone: APP.DEFAULT_TIMEZONE,
+          dateStyle: 'medium',
+          timeStyle: 'short'
+        })
+        return `${i + 1}. *${row.title}*\n   📅 ${when}`
+      }).join('\n\n')
+
+      await sendWhatsAppMessage({
+        to: phone,
+        message: prefix + (language === 'hi'
+          ? `Mujhe ${matches.length} reminders mile. Kaunsa cancel karna hai?\n\n${options}`
+          : `I found ${matches.length} reminders. Which one should I cancel?\n\n${options}`)
+      })
+      return
+    }
+
+    const found = matches[0]
 
     await supabase.from('reminders').update({ status: 'cancelled' }).eq('id', found.id)
 

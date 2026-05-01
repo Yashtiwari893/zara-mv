@@ -4,7 +4,7 @@
 import { getSupabaseClient } from '@/lib/infrastructure/database'
 import { sendWhatsAppMessage } from '@/lib/whatsapp/client'
 import {
-  taskAdded, taskList, taskCompleted, errorMessage,
+  taskAdded, taskCompleted, errorMessage,
 } from '@/lib/whatsapp/templates'
 import { truncateWhatsAppMessage } from '@/lib/whatsapp/message'
 import type { Language } from '@/types'
@@ -45,6 +45,25 @@ function normalizeListName(raw: string): string {
     'office tasks': 'office',
   }
   return aliases[lower] ?? lower
+}
+
+function getNoTaskMessage(language: Language): string {
+  return language === 'hi'
+    ? 'Aapki koi task nahi hai abhi'
+    : 'You have no active tasks right now.'
+}
+
+function formatActiveTaskLines(
+  tasks: Array<{ content: string; listName: string }>,
+  language: Language
+): string {
+  return tasks
+    .map((task, index) => {
+      const statusText = language === 'hi' ? 'active' : 'active'
+      const dueText = language === 'hi' ? 'Not set' : 'Not set'
+      return `${index + 1}. *${task.content}*\n   List: ${task.listName}\n   Status: ${statusText}\n   Due: ${dueText}`
+    })
+    .join('\n\n')
 }
 
 // ─── ADD TASK ─────────────────────────────────────────────────
@@ -260,7 +279,7 @@ export async function handleListTasks(params: {
     || (!cleanedListName && !hasExplicitSpecificList)
     || (!hasExplicitSpecificList && ['list', 'lists', 'all', 'sab', 'sabhi', ''].includes(cleanedListName))
   ) {
-    return await handleListAllLists({ userId, phone, language })
+    return await handleListAllActiveTasks({ userId, phone, language, prefix })
   }
 
   const listName = normalizeListName(explicitKnownList || params.listName)
@@ -285,23 +304,71 @@ export async function handleListTasks(params: {
     .from('tasks')
     .select('content, completed')
     .eq('list_id', list.id)
+    .eq('completed', false)
     .order('created_at', { ascending: true })
 
   // ── GUARDRAIL: List empty hai ──────────────────────────────
   if (!tasks || tasks.length === 0) {
     await sendWhatsAppMessage({
       to: phone,
-      message: prefix + (language === 'hi'
-        ? `📭 *${list.name}* list abhi khali hai।\n\n_Kuch add karo: "${list.name} mein milk add karo"_`
-        : `📭 *${list.name}* list is empty.\n\n_Add something: "add milk to ${list.name}"_`)
+      message: prefix + getNoTaskMessage(language)
     })
     return
   }
 
-    const listMessage = taskList(list.name, tasks, language)
-    await sendWhatsAppMessage({
+  const lines = formatActiveTaskLines(
+    tasks.map((task) => ({ content: task.content, listName: list.name })),
+    language
+  )
+  const header = language === 'hi' ? `📋 *${list.name} Active Tasks:*` : `📋 *${list.name} Active Tasks:*`
+
+  await sendWhatsAppMessage({
     to: phone,
-      message: prefix + truncateWhatsAppMessage(listMessage)
+    message: prefix + truncateWhatsAppMessage(`${header}\n\n${lines}`)
+  })
+}
+
+async function handleListAllActiveTasks(params: {
+  userId: string
+  phone: string
+  language: Language
+  prefix?: string
+}) {
+  const { userId, phone, language, prefix = '' } = params
+
+  const [{ data: tasks }, { data: lists }] = await Promise.all([
+    supabase
+      .from('tasks')
+      .select('content, list_id')
+      .eq('user_id', userId)
+      .eq('completed', false)
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('lists')
+      .select('id, name')
+      .eq('user_id', userId),
+  ])
+
+  if (!tasks || tasks.length === 0) {
+    await sendWhatsAppMessage({
+      to: phone,
+      message: prefix + getNoTaskMessage(language)
+    })
+    return
+  }
+
+  const listMap = new Map<string, string>((lists || []).map((list) => [list.id, list.name]))
+  const taskRows = tasks.map((task) => ({
+    content: task.content,
+    listName: listMap.get(task.list_id) || 'general',
+  }))
+
+  const header = language === 'hi' ? '📋 *Aapki Active Tasks:*' : '📋 *Your Active Tasks:*'
+  const lines = formatActiveTaskLines(taskRows, language)
+
+  await sendWhatsAppMessage({
+    to: phone,
+    message: prefix + truncateWhatsAppMessage(`${header}\n\n${lines}`)
   })
 }
 
