@@ -54,7 +54,7 @@ const EMPTY: ParsedDateTime = {
 }
 
 function getAmbiguityFlags(text: string) {
-  const hasExplicitDay = /\b(kal|cal|aaj|today|tomorrow|day\s+after\s+tomorrow|in\s+\d+\s+days?|\d+\s+din\s+baad|parso|monday|tuesday|wednesday|thursday|friday|saturday|sunday|som|mangal|budh|guru|shukra|shani|ravi|\d{1,2}\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)|\d{1,2}\/\d{1,2})\b/i.test(text)
+  const hasExplicitDay = /\b(kal|cal|aaj|today|tomorrow|parso|monday|tuesday|wednesday|thursday|friday|saturday|sunday|som|mangal|budh|guru|shukra|shani|ravi|\d{1,2}\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)|\d{1,2}\/\d{1,2})\b/i.test(text)
   const hasExplicitAmPm = /\b(am|pm|subah|dopahar|shaam|sham|raat|morning|evening|night|afternoon|baje|bje|bajey)\b/i.test(text)
   const hasExplicitTime = /\b(?:\d{1,2}|ek|do|teen|chaar|char|paanch|panch|chhe|cheh|saat|aath|nau|das|gyarah|baraah|baarah)(?::\d{2})?\s*(?:am|pm|bje|baje|bajey)?\b/i.test(text)
 
@@ -69,7 +69,6 @@ function getAmbiguityFlags(text: string) {
 function normalizeHindiTimeText(text: string): string {
   return text
     .replace(/\b(prso|praso|paro|paro\s*se)\b/gi, 'parso')
-    .replace(/\b(day\s+after\s+tomorrow)\b/gi, 'parso')
     .replace(
       /\b(ek|do|teen|chaar|char|paanch|panch|chhe|cheh|saat|aath|nau|das|gyarah|baraah|baarah)\b(?=\s*(?:bje|baje|bajey|am|pm)\b)/gi,
       (match) => HINDI_TIME_WORDS[match.toLowerCase()] ?? match
@@ -241,22 +240,6 @@ function quickParse(text: string): ParsedDateTime | null {
     }
   }
 
-  // ── Relative: "X din baad" / "in X days" ─────────────────
-  const dayMatch = lower.match(/^(?:in\s+)?(\d+)\s*(?:din|day|days)\s*(?:baad|later|from\s+now)?$/)
-  if (dayMatch) {
-    const days = parseInt(dayMatch[1], 10)
-    if (days > 0 && days <= 365) {
-      const date = new Date(now)
-      date.setDate(date.getDate() + days)
-      return {
-        ...EMPTY,
-        date,
-        confidence: 0.95,
-        humanReadable: `In ${days} day${days !== 1 ? 's' : ''}`,
-      }
-    }
-  }
-
   // ── One-shot: "kal/aaj/parso + time" ─────────────────────────────────
   // Pattern: (kal|aaj|parso)? digit (optional :mm) (period marker)
   const ONE_SHOT_TIME_RE = /\b(kal|aaj|today|tomorrow|parso|cal)?\b.*?\b(\d{1,2})(?::(\d{2}))?\s*(a\.m\.|p\.m\.|am|pm|bje|baje|bajey)(?!\w)/i
@@ -293,7 +276,7 @@ function quickParse(text: string): ParsedDateTime | null {
     const istTarget = new Date(parsed.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }))
 
     // If no day keyword and the time is already past → push to tomorrow
-    const isExplicitDay = /\b(kal|tomorrow|cal|parso|day\s+after\s+tomorrow|aaj|today|in\s+\d+\s+days?|\d+\s+din\s+baad)\b/.test(lower)
+    const isExplicitDay = /\b(kal|tomorrow|cal|parso|aaj|today)\b/.test(lower)
     if (!isExplicitDay && !hasExplicitToday && istTarget.getTime() < istNow.getTime() - 60_000) {
       parsed.setDate(parsed.getDate() + 1)
     }

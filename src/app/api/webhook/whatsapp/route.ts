@@ -332,31 +332,11 @@ export async function POST(req: NextRequest) {
         const authToken = botCreds?.[0]?.auth_token || process.env.ELEVEN_ZA_API_KEY
 
         const stt = await speechToText(mediaUrl, authToken)
-        if (!stt?.text?.trim()) {
-          await sendWhatsAppMessage({
-            to: cleanFromPhone,
-            message: lang === 'hi'
-              ? 'Audio samajh nahi aaya, please text mein likhein'
-              : 'Could not understand the audio. Please send text.'
-          })
-          return NextResponse.json({ ok: true })
-        }
-
-        processedMessage = stt.text.trim()
-        await sendWhatsAppMessage({
-          to: cleanFromPhone,
-          message: `Voice message mili. Aapne kaha: "${processedMessage}"`
-        })
+        processedMessage = stt?.text || message
         logger.info('🎙 Voice transcribed', { userId: user.id, length: processedMessage?.length })
       } catch (sttErr) {
         logger.error('Speech-to-text failed', { userId: user.id }, sttErr as Error)
-        await sendWhatsAppMessage({
-          to: cleanFromPhone,
-          message: lang === 'hi'
-            ? 'Audio samajh nahi aaya, please text mein likhein'
-            : 'Could not understand the audio. Please send text.'
-        })
-        return NextResponse.json({ ok: true })
+        processedMessage = message // Fallback to original
       }
     }
 
@@ -403,14 +383,7 @@ export async function POST(req: NextRequest) {
           await handleDeleteDocument({ userId: user.id, phone: cleanFromPhone, language: lang, query: pd.query || '' })
         } else if (pd.intent === 'CANCEL_REMINDER') {
           await clearPendingAction(user.id)
-          await handleCancelReminder({
-            userId: user.id,
-            phone: cleanFromPhone,
-            language: lang,
-            titleHint: pd.titleHint,
-            dateTimeHint: pd.dateTimeHint,
-            isGenericSearch: pd.isGenericSearch
-          })
+          await handleCancelReminder({ userId: user.id, phone: cleanFromPhone, language: lang, titleHint: pd.titleHint, isGenericSearch: pd.isGenericSearch })
         } else if (pd.intent === 'DELETE_TASK') {
           const pendingTask = (pd.taskContent || '').trim()
           if (!pendingTask) {
@@ -818,9 +791,6 @@ export async function POST(req: NextRequest) {
             userId: user.id,
             phone: cleanFromPhone,
             language: lang,
-            titleHint: extractedData.reminderTitle || undefined,
-            dateTimeHint: extractedData.dateTimeText || undefined,
-            rawQuery: processedMessage,
           })
           isHandled = true
           break
@@ -860,41 +830,17 @@ export async function POST(req: NextRequest) {
           // Detect bulk cancel from message itself (LLM may miss isGenericSearch flag)
           const cancelBulkPattern = /\b(all|sab|saare|saari|everything|pure|dono|both)\b/i
           const isCancelAll = !!extractedData.isGenericSearch || cancelBulkPattern.test(processedMessage)
-          const hasReminderHint = !!(extractedData.reminderTitle || extractedData.dateTimeText)
-
-          if (!isCancelAll && !hasReminderHint) {
-            await sendWhatsAppMessage({
-              to: cleanFromPhone,
-              message: lang === 'hi'
-                ? 'Kaunsa reminder cancel karein? Aaj ka ya kal ka?'
-                : 'Which reminder should I cancel? Today or tomorrow?'
-            })
-            isHandled = true
-            break
-          }
-
           const reminderLabel = isCancelAll
             ? (lang === 'hi' ? 'SAARE reminders' : 'ALL reminders')
             : extractedData.reminderTitle
               ? `*"${extractedData.reminderTitle}"* reminder`
               : (lang === 'hi' ? 'yeh reminder' : 'this reminder')
-
-          const dayLabel = extractedData.dateTimeText
-            ? (lang === 'hi' ? ` (${extractedData.dateTimeText})` : ` (${extractedData.dateTimeText})`)
-            : ''
-
           const confirmMsg = lang === 'hi'
-            ? `🗑️ Kya aap ${reminderLabel}${dayLabel} cancel karna chahte ho?`
-            : `🗑️ Are you sure you want to cancel ${reminderLabel}${dayLabel}?`
+            ? `🗑️ Kya aap ${reminderLabel} cancel karna chahte ho?`
+            : `🗑️ Are you sure you want to cancel ${reminderLabel}?`
           await updateContext(user.id, {
             pending_action: 'awaiting_delete_confirm',
-            pending_delete: {
-              intent: 'CANCEL_REMINDER',
-              titleHint: extractedData.reminderTitle || undefined,
-              dateTimeHint: extractedData.dateTimeText || undefined,
-              isGenericSearch: isCancelAll,
-              confirmMessage: confirmMsg
-            } as PendingDelete,
+            pending_delete: { intent: 'CANCEL_REMINDER', titleHint: extractedData.reminderTitle || undefined, isGenericSearch: isCancelAll, confirmMessage: confirmMsg } as PendingDelete,
           })
           await sendWhatsAppMessage({
             to: cleanFromPhone,
