@@ -102,15 +102,33 @@ export async function POST(req: Request) {
 
 function getNextRecurrenceDate(recurrence: string, timeStr: string): Date {
   const [h, m] = timeStr.split(':').map(Number)
-  const next = new Date()
-  if (recurrence === 'daily') next.setDate(next.getDate() + 1)
-  else if (recurrence === 'weekly') next.setDate(next.getDate() + 7)
-  else if (recurrence === 'monthly') next.setMonth(next.getMonth() + 1)
-  // IST to UTC: subtract 5:30
-  let hours = h - 5
-  let mins = m - 30
-  if (mins < 0) { mins += 60; hours-- }
-  if (hours < 0) { hours += 24; next.setDate(next.getDate() - 1) }
-  next.setHours(hours, mins, 0, 0)
-  return next
+  const now = new Date()
+
+  // Get current IST date parts for proper date calculation
+  const istParts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(now)
+  const getPart = (type: string) => istParts.find(p => p.type === type)?.value ?? '01'
+
+  // Build base date in IST at noon (safe from date-crossing issues)
+  const baseIST = new Date(`${getPart('year')}-${getPart('month')}-${getPart('day')}T12:00:00+05:30`)
+
+  if (recurrence === 'daily') baseIST.setDate(baseIST.getDate() + 1)
+  else if (recurrence === 'weekly') baseIST.setDate(baseIST.getDate() + 7)
+  else if (recurrence === 'monthly') baseIST.setMonth(baseIST.getMonth() + 1)
+
+  // Re-extract IST date parts after adjustment
+  const adjParts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(baseIST)
+  const getAdj = (type: string) => adjParts.find(p => p.type === type)?.value ?? '01'
+
+  // Construct proper IST time string with +05:30 offset → Date handles UTC conversion
+  const hh = String(h).padStart(2, '0')
+  const mm = String(m).padStart(2, '0')
+  const isoStr = `${getAdj('year')}-${getAdj('month')}-${getAdj('day')}T${hh}:${mm}:00+05:30`
+
+  return new Date(isoStr)
 }
