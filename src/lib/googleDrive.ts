@@ -2,7 +2,7 @@
 // Google Drive integration — upload, fetch, token refresh
 
 import { getSupabaseClient } from '@/lib/infrastructure/database'
-import { GOOGLE } from '@/config'
+import { GOOGLE, APP } from '@/config'
 
 const supabase = getSupabaseClient()
 
@@ -77,16 +77,16 @@ export async function getValidAccessToken(userId: string): Promise<string | null
   return refreshAccessToken(userId, tokens.google_refresh_token)
 }
 
-// ─── GET OR CREATE ZARA FOLDER IN USER'S DRIVE ────────────────
+// ─── GET OR CREATE FOLDER IN USER'S DRIVE ────────────────
 async function getOrCreateZaraFolder(accessToken: string, userId: string): Promise<string | null> {
   // Check if folder ID already stored
   const tokens = await getGoogleTokens(userId)
   if (tokens?.google_drive_folder_id) return tokens.google_drive_folder_id
 
   try {
-    // Search for existing ZARA folder
+    // Search for existing folder
     const searchRes = await fetch(
-      `${GOOGLE_DRIVE_FILES_URL}?q=name%3D'ZARA+Vault'+and+mimeType%3D'application%2Fvnd.google-apps.folder'+and+trashed%3Dfalse&fields=files(id,name)`,
+      `${GOOGLE_DRIVE_FILES_URL}?q=name%3D'${encodeURIComponent(APP.NAME)}+Vault'+and+mimeType%3D'application%2Fvnd.google-apps.folder'+and+trashed%3Dfalse&fields=files(id,name)`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     )
     const searchData = await searchRes.json()
@@ -96,7 +96,7 @@ async function getOrCreateZaraFolder(accessToken: string, userId: string): Promi
     if (searchData.files?.length > 0) {
       folderId = searchData.files[0].id
     } else {
-      // Create ZARA Vault folder
+      // Create Vault folder
       const createRes = await fetch(GOOGLE_DRIVE_FILES_URL, {
         method: 'POST',
         headers: {
@@ -104,7 +104,7 @@ async function getOrCreateZaraFolder(accessToken: string, userId: string): Promi
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          name: 'ZARA Vault',
+          name: `${APP.NAME} Vault`,
           mimeType: 'application/vnd.google-apps.folder'
         })
       })

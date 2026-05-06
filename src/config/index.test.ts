@@ -58,7 +58,7 @@ describe('Configuration Module', () => {
 
   describe('APP Constants', () => {
     it('should have app name', () => {
-      expect(APP.NAME).toBe('ZARA')
+      expect(APP.NAME).toBe('11za Personal Assistant')
     })
 
     it('should have valid timezone', () => {

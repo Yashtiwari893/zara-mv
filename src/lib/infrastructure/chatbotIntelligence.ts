@@ -4,7 +4,7 @@
  */
 
 import { getGroqClient } from '@/lib/ai/clients'
-import { AI_MODELS } from '@/config'
+import { AI_MODELS, APP } from '@/config'
 import { createError, retryWithExponentialBackoff } from './errorHandler'
 import { logger } from './logger'
 
@@ -42,7 +42,7 @@ function buildSystemPrompt(context: ChatContext): string {
   // More history = better pronoun resolution ("vo wala", "it", "pehle wala")
   const recencyContext = context.conversationHistory.slice(-10)
   const recencyStr = recencyContext.length > 0
-    ? `[CONVERSATION SO FAR:\n${recencyContext.map(m => `${m.role === 'user' ? 'User' : 'Zara'}: ${m.content}`).join('\n')}\n]\n\n`
+    ? `[CONVERSATION SO FAR:\n${recencyContext.map(m => `${m.role === 'user' ? 'User' : APP.NAME}: ${m.content}`).join('\n')}\n]\n\n`
     : ''
 
   const langInstructions: Record<string, string> = {
@@ -52,7 +52,7 @@ function buildSystemPrompt(context: ChatContext): string {
   }
 
   return [
-    `You are ZARA, a warm and intelligent personal WhatsApp assistant.`,
+    `You are ${APP.NAME}, a warm and intelligent personal WhatsApp assistant.`,
     name ? `The user's name is ${name}. Use their name occasionally (not every message).` : '',
     langInstructions[context.language] || langInstructions.en,
     `RULES:

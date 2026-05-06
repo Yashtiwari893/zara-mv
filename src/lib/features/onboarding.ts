@@ -5,6 +5,7 @@ import { getSupabaseClient } from '@/lib/infrastructure/database'
 import { sendWhatsAppMessage } from '@/lib/whatsapp/client'
 import type { Language } from '@/types'
 import { detectLanguageSync } from '@/lib/ai/language'
+import { APP } from '@/config'
 
 const supabase = getSupabaseClient()
 
@@ -75,11 +76,11 @@ export async function handleOnboarding(
 
   // ── Welcome message based on detected language ─────────────
   const welcomeMessages: Record<Language, string> = {
-    en: `Hey${user.name ? ` ${user.name}` : ''}! 👋 I'm *ZARA* — your personal assistant on WhatsApp.\n\nI can help you with:\n⏰ Reminders — _"Remind me to call Mom at 6pm"_\n📋 Lists — _"Add milk to grocery list"_\n📁 Documents — _Send any photo or PDF to save it_\n🤖 Questions — _Ask me anything!_\n\nJust talk to me naturally — in Hindi, English, or Gujarati! 😊`,
+    en: `Hey${user.name ? ` ${user.name}` : ''}! 👋 I'm *${APP.NAME}* — your personal assistant on WhatsApp.\n\nI can help you with:\n⏰ Reminders — _"Remind me to call Mom at 6pm"_\n📋 Lists — _"Add milk to grocery list"_\n📁 Documents — _Send any photo or PDF to save it_\n🤖 Questions — _Ask me anything!_\n\nJust talk to me naturally — in Hindi, English, or Gujarati! 😊`,
 
-    hi: `Namaste${user.name ? ` ${user.name}` : ''}! 👋 Main hoon *ZARA* — aapka WhatsApp personal assistant.\n\nMain aapki madad kar sakta hoon:\n⏰ Reminders — _"Kal 6 bje mama ko call karna yaad dilana"_\n📋 Lists — _"Grocery mein milk add karo"_\n📁 Documents — _Koi bhi photo ya PDF bhejo — save ho jayega_\n🤖 Sawaal — _Kuch bhi puch sakte ho!_\n\nBas naturally baat karo — Hindi mein, English mein, ya Gujarati mein! 😊`,
+    hi: `Namaste${user.name ? ` ${user.name}` : ''}! 👋 Main hoon *${APP.NAME}* — aapka WhatsApp personal assistant.\n\nMain aapki madad kar sakta hoon:\n⏰ Reminders — _"Kal 6 bje mama ko call karna yaad dilana"_\n📋 Lists — _"Grocery mein milk add karo"_\n📁 Documents — _Koi bhi photo ya PDF bhejo — save ho jayega_\n🤖 Sawaal — _Kuch bhi puch sakte ho!_\n\nBas naturally baat karo — Hindi mein, English mein, ya Gujarati mein! 😊`,
 
-    gu: `Kem cho${user.name ? ` ${user.name}` : ''}! 👋 Hu chu *ZARA* — aapno WhatsApp personal assistant.\n\nHu madad kari shakish:\n⏰ Reminders\n📋 Lists\n📁 Documents\n🤖 Sawal\n\nBas swabhavik rite vaat karo! 😊`,
+    gu: `Kem cho${user.name ? ` ${user.name}` : ''}! 👋 Hu chu *${APP.NAME}* — aapno WhatsApp personal assistant.\n\nHu madad kari shakish:\n⏰ Reminders\n📋 Lists\n📁 Documents\n🤖 Sawal\n\nBas swabhavik rite vaat karo! 😊`,
   }
 
   // ── GUARDRAIL 3: Send with error handling ─────────────────

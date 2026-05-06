@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { APP } from "@/config";
 
 // ── Floating chat bubble animation ──
 const CHAT_MESSAGES = [
@@ -42,7 +43,7 @@ const FEATURES = [
     {
         icon: "⏰",
         title: "Smart Reminders",
-        desc: "Hinglish mein bolo — 'kal 5 bje yaad dilana' — aur ZARA exactly waqt pe remind karega.",
+        desc: `Hinglish mein bolo — 'kal 5 bje yaad dilana' — aur ${APP.NAME} exactly waqt pe remind karega.`,
     },
     {
         icon: "📋",
@@ -62,7 +63,7 @@ const FEATURES = [
     {
         icon: "🎙️",
         title: "Voice Notes",
-        desc: "Type karna nahi — voice note bhejo. ZARA samjhega aur kaam karega.",
+        desc: `Type karna nahi — voice note bhejo. ${APP.NAME} samjhega aur kaam karega.`,
     },
     {
         icon: "💬",
@@ -104,8 +105,8 @@ export default function HomePage() {
             {/* ── NAV ── */}
             <nav className="flex items-center justify-between px-6 py-5 max-w-6xl mx-auto">
                 <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-xl flex items-center justify-center text-base" style={{ background: "#25D366" }}>Z</div>
-                    <span className="syne text-lg font-bold tracking-tight">ZARA</span>
+                    <div className="w-8 h-8 rounded-xl flex items-center justify-center text-base" style={{ background: "#25D366" }}>11</div>
+                    <span className="syne text-lg font-bold tracking-tight">{APP.NAME}</span>
                     <span className="text-xs text-gray-500 ml-1">by 11za</span>
                 </div>
                 <a
@@ -184,9 +185,9 @@ export default function HomePage() {
                         {/* WA Header */}
                         <div className="px-4 py-3 flex items-center gap-3" style={{ background: "#1a2b1a" }}>
                             <div className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm"
-                                style={{ background: "#25D366" }}>Z</div>
+                                style={{ background: "#25D366" }}>11</div>
                             <div>
-                                <div className="text-white text-sm font-semibold">ZARA</div>
+                                <div className="text-white text-sm font-semibold">{APP.NAME}</div>
                                 <div className="text-xs flex items-center gap-1" style={{ color: "#25D366" }}>
                                     <span className="pulse-dot w-1.5 h-1.5 rounded-full inline-block" style={{ background: "#25D366" }} />
                                     Online
@@ -249,7 +250,7 @@ export default function HomePage() {
                     {[
                         { n: "1", title: "WhatsApp pe Hi bhejo", desc: "Koi form, koi app nahi" },
                         { n: "2", title: "Apni baat kaho", desc: "Hindi, English, Gujarati — koi bhi bhasha" },
-                        { n: "3", title: "ZARA kaam karega", desc: "Reminders, lists, documents — sab" },
+                        { n: "3", title: `${APP.NAME} kaam karega`, desc: "Reminders, lists, documents — sab" },
                     ].map((step) => (
                         <div key={step.n} className="flex flex-col items-center gap-4">
                             <div
@@ -278,7 +279,7 @@ export default function HomePage() {
                         Abhi shuru karo — free hai
                     </h2>
                     <p className="text-gray-400 mb-8 max-w-md mx-auto">
-                        Koi credit card nahi. Koi app nahi. Sirf WhatsApp pe "Hi" bhejo aur ZARA baaki sambhal lega।
+                        Koi credit card nahi. Koi app nahi. Sirf WhatsApp pe "Hi" bhejo aur {APP.NAME} baaki sambhal lega।
                     </p>
                     <a
                         href="https://wa.me/15558346206?text=Hi"
@@ -300,8 +301,8 @@ export default function HomePage() {
                 style={{ borderColor: "rgba(255,255,255,0.06)" }}>
                 <div className="flex items-center gap-2">
                     <div className="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold"
-                        style={{ background: "#25D366" }}>Z</div>
-                    <span className="text-sm text-gray-500">ZARA by 11za · Engees Communications Pvt Ltd</span>
+                        style={{ background: "#25D366" }}>11</div>
+                    <span className="text-sm text-gray-500">{APP.NAME} by 11za · Engees Communications Pvt Ltd</span>
                 </div>
                 <div className="flex gap-6 text-xs text-gray-600">
                     <a href="/privacy" className="hover:text-gray-400 transition-colors">Privacy</a>

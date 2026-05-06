@@ -1,12 +1,12 @@
 import { getGroqClient } from '@/lib/ai/clients'
-import { AI_MODELS } from '@/config'
+import { APP, AI_MODELS } from '@/config'
 import { retryWithExponentialBackoff } from '@/lib/infrastructure/errorHandler'
 import type { Intent, IntentResult } from '@/types'
 
 export type { Intent, IntentResult }
 
 // ─── SYSTEM PROMPT — Production-Grade Intent Classifier ──────────────────────
-const SYSTEM_PROMPT = `You are ZARA's intent classifier for a WhatsApp personal assistant.
+const getSystemPrompt = () => `You are ${APP.NAME}'s intent classifier for a WhatsApp personal assistant.
 Users speak in Hinglish (Hindi + English mix), Hindi, Gujarati, or English. Be very smart about it.
 
 ## YOUR JOB
@@ -171,7 +171,7 @@ Message: "Help" / "Kya kar sakte ho" / "features batao" / "kya kya kar sakti ho"
 Message: "What is ai chat" / "ai chat kya hai" / "ai chat kya hota hai"
 → {"intent":"UNKNOWN","confidence":1.0,"extractedData":{}}
 
-Message: "hey" / "kish ne bola" / casual chitchat / complaints / questions about ZARA's behavior
+Message: "hey" / "kish ne bola" / casual chitchat / complaints / questions about ${APP.NAME}'s behavior
 → {"intent":"UNKNOWN","confidence":1.0,"extractedData":{}}
 
 CRITICAL: HELP is ONLY for when user explicitly asks "what can you do" or "help" or "features".
@@ -245,14 +245,14 @@ export async function classifyIntent(
   // ─── Conversation History (for full context awareness) ────────
   const historyMessages = (context?.conversation_history || []).slice(-6) as Array<{ role: string, content: string }>
   const historyStr = historyMessages.length > 0
-    ? `\n\n[RECENT CONVERSATION:\n${historyMessages.map(h => `${h.role === 'user' ? 'User' : 'Zara'}: ${h.content}`).join('\n')}\n]`
+    ? `\n\n[RECENT CONVERSATION:\n${historyMessages.map(h => `${h.role === 'user' ? 'User' : APP.NAME}: ${h.content}`).join('\n')}\n]`
     : ''
 
   try {
     const completion = await retryWithExponentialBackoff(
       async () => getGroqClient().chat.completions.create({
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'system', content: getSystemPrompt() },
           {
             role: 'user',
             content: `Current time (IST): ${timeStr}. User language: ${lang}.${contextHint}${historyStr}\n\nUser message: "${message}"`

@@ -75,8 +75,8 @@ export const AI_MODELS = {
 // ─── Application Constants ────────────────────────────────────
 
 export const APP = {
-  NAME: 'ZARA',
-  BOT_SENDER_NAME: '11za Assistant',
+  NAME: process.env.BOT_NAME || '11za Personal Assistant',
+  BOT_SENDER_NAME: process.env.BOT_NAME || '11za Personal Assistant',
   DEFAULT_TIMEZONE: 'Asia/Kolkata',
   DEFAULT_LANGUAGE: 'en' as const,
   MAX_FILE_SIZE_BYTES: 10 * 1024 * 1024,       // 10 MB

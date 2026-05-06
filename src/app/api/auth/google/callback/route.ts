@@ -6,6 +6,7 @@ import { getSupabaseClient } from '@/lib/infrastructure/database'
 import { exchangeCodeForTokens } from '@/lib/googleDrive'
 import { sendWhatsAppMessage } from '@/lib/whatsapp/client'
 import { syncPendingDocumentsToDrive } from '@/lib/features/document'
+import { APP } from '@/config'
 
 const supabase = getSupabaseClient()
 
@@ -75,8 +76,8 @@ export async function GET(req: NextRequest) {
     // 4. Send WhatsApp confirmation
     const lang = (user.language as string) || 'hi'
     const confirmMsg = lang === 'hi'
-      ? `✅ *Google Drive Connect ho gayi!*\n\nAb se jo bhi document save karoge, wo apni Google Drive mein *ZARA Vault* folder mein jayega 📁\n\nDobara connect karne ki zarurat nahi! 😊`
-      : `✅ *Google Drive Connected!*\n\nYour documents will now be saved in your Google Drive under the *ZARA Vault* folder 📁\n\nYou won't need to connect again! 😊`
+      ? `✅ *Google Drive Connect ho gayi!*\n\nAb se jo bhi document save karoge, wo apni Google Drive mein *${APP.NAME} Vault* folder mein jayega 📁\n\nDobara connect karne ki zarurat nahi! 😊`
+      : `✅ *Google Drive Connected!*\n\nYour documents will now be saved in your Google Drive under the *${APP.NAME} Vault* folder 📁\n\nYou won't need to connect again! 😊`
 
     // Get auth token for this user's phone config
     const { data: phoneConfig } = await supabase
@@ -95,9 +96,9 @@ export async function GET(req: NextRequest) {
     return new NextResponse(
       `<html><body style="font-family:sans-serif;text-align:center;padding:40px;background:#f0fdf4">
         <div style="max-width:400px;margin:auto">
-          <div style="font-size:26px">Zara Powered By 11za</div>
+          <div style="font-size:26px">${APP.NAME} Powered By 11za</div>
           <h2 style="color:#15803d">Google Drive Connected!</h2>
-          <p style="color:#374151">Your documents will now be saved directly to your Google Drive in the <strong>ZARA Vault</strong> folder.</p>
+          <p style="color:#374151">Your documents will now be saved directly to your Google Drive in the <strong>${APP.NAME} Vault</strong> folder.</p>
           <p style="color:#6b7280;font-size:14px">You can close this tab and go back to WhatsApp.</p>
         </div>
       </body></html>`,

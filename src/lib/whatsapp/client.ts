@@ -1,5 +1,6 @@
 import { sendWhatsAppMessage as legacySender } from './sender'
 import { getSupabaseClient } from '@/lib/infrastructure/database'
+import { APP } from '@/config'
 import type { SendMessageOptions } from '@/types'
 
 // Use admin client to bypass RLS and securely fetch sensitive credentials
@@ -28,7 +29,7 @@ async function persistOutgoingMessage(params: PersistOutgoingMessageParams): Pro
     received_at: new Date().toISOString(),
     content_type: contentType,
     content_text: contentText || null,
-    sender_name: 'ZARA',
+    sender_name: APP.BOT_SENDER_NAME,
     event_type: 'MtMessage',
     is_in_24_window: true,
     is_responded: true,

@@ -248,7 +248,7 @@ export async function handleListTasks(params: {
   // ── 1. GENERIC SEARCH HANDLING ──────────────────────────────
   // If user says "tasks" or "list", show them all available lists
   const cleanedListName = params.listName?.toLowerCase()
-    .replace(/\b(list|lists|task|tasks|dikha|dikhao|dekho|show|bhej|send|de|do|re|zara|please|plz|kr|karo)\b/gi, '')
+    .replace(/\b(list|lists|task|tasks|dikha|dikhao|dekho|show|bhej|send|de|do|re|zara|please|plz|kr|karo|11za|assistant)\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim() || ''
 

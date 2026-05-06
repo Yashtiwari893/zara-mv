@@ -3,13 +3,14 @@
 // v2.0 — Professional Edition: complete Gujarati, consistent tone, improved copy
 
 import type { Language } from '@/types'
+import { APP } from '@/config'
 export type { Language }
 
 // ─── ONBOARDING ───────────────────────────────────────────────
 
 export function welcomeMessage(name?: string | null): string {
   const greeting = name ? `Hey ${name}!` : 'Hey!'
-  return `${greeting} 👋 I'm *ZARA* — your personal assistant on WhatsApp by 11za.\n\nYou can message or send voice notes in *any language* — Hindi, English, Gujarati — and I'll understand! 😊`
+  return `${greeting} 👋 I'm *${APP.NAME}* — your personal assistant on WhatsApp by 11za.\n\nYou can message or send voice notes in *any language* — Hindi, English, Gujarati — and I'll understand! 😊`
 }
 
 export function onboardingComplete(name: string, lang: Language): string {

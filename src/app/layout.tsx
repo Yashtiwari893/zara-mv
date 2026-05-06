@@ -3,6 +3,7 @@
 import type { Metadata, Viewport } from "next";
 import { DM_Sans } from "next/font/google";
 import "./globals.css";
+import { APP } from "@/config";
 
 const dmSans = DM_Sans({
   variable: "--font-dm-sans",
@@ -13,7 +14,7 @@ const dmSans = DM_Sans({
 
 // ─── SEO Metadata ─────────────────────────────────────────────
 export const metadata: Metadata = {
-  title: "ZARA by 11za — Your Personal Assistant on WhatsApp",
+  title: `${APP.NAME} — Your Personal Assistant on WhatsApp`,
   description:
     "Reminders, lists, documents, AI chat — sab kuch WhatsApp mein. Hindi, English, Gujarati — kisi bhi bhasha mein. No app download needed.",
 
@@ -22,7 +23,7 @@ export const metadata: Metadata = {
     "personal assistant WhatsApp",
     "WhatsApp reminder",
     "11za",
-    "ZARA AI",
+    "11za Assistant",
     "WhatsApp bot India",
     "Hindi WhatsApp bot",
     "Gujarati WhatsApp assistant",
@@ -32,11 +33,11 @@ export const metadata: Metadata = {
 
   // Open Graph — WhatsApp/Facebook share preview
   openGraph: {
-    title: "ZARA — Your Personal Assistant on WhatsApp",
+    title: `${APP.NAME} — Your Personal Assistant on WhatsApp`,
     description:
       "Reminders, lists, documents aur AI chat — sab kuch WhatsApp pe. No app download.",
     url: "https://11za-assistant.vercel.app",
-    siteName: "ZARA by 11za",
+    siteName: APP.NAME,
     locale: "en_IN",
     type: "website",
   },
@@ -44,7 +45,7 @@ export const metadata: Metadata = {
   // Twitter card
   twitter: {
     card: "summary_large_image",
-    title: "ZARA — WhatsApp Personal Assistant by 11za",
+    title: `${APP.NAME} — WhatsApp Personal Assistant`,
     description: "Reminders, lists, documents aur AI chat — sab WhatsApp pe!",
   },
 

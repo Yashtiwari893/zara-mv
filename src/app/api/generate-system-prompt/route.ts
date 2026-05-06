@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getGroqClient } from '@/lib/ai/clients'
 import { getSupabaseClient } from '@/lib/infrastructure/database'
-import { AI_MODELS } from '@/config'
+import { AI_MODELS, APP } from '@/config'
 
 const supabase = getSupabaseClient()
 
@@ -39,10 +39,10 @@ function validatePhone(phone: string): { valid: boolean; reason?: string } {
 
 // ─── SYSTEM PROMPT BUILDER ────────────────────────────────────
 const ARCHITECT_PROMPT = `
-You are designing a system prompt for ZARA — a WhatsApp personal assistant.
+You are designing a system prompt for ${APP.NAME} — a WhatsApp personal assistant.
 
-ZARA's personality:
-- Name: ZARA
+${APP.NAME}'s personality:
+- Name: ${APP.NAME}
 - Warm, friendly, like a helpful friend — NOT a robot or corporate assistant
 - Casual WhatsApp tone — short, natural, conversational
 - Light emojis only (max 1-2 per message) 😊✅
