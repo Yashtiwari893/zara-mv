@@ -1,4 +1,4 @@
-# ZARA — WhatsApp Personal Assistant by 11za
+# 11za Personal Assistant — WhatsApp Assistant by 11za
 
 > Reminders, Lists, Document Vault, AI Chat — sab kuch WhatsApp pe. Hindi, English, Gujarati etc.
 
