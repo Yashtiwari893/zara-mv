@@ -253,19 +253,29 @@ function quickParse(text: string): ParsedDateTime | null {
     const rawPeriod = (oneShotMatch[4] || '').replace(/\./g, '').toLowerCase() // "p.m." -> "pm"
     const pseudoMatch = [oneShotMatch[0], oneShotMatch[2], oneShotMatch[3], rawPeriod] as unknown as RegExpMatchArray
     const timeStr = extractTime(pseudoMatch, lower)
+    
     // Create date and force it to be IST by calculating the offset
-    const targetDate = new Date(now)
+    const options = { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' } as const;
+    const parts = new Intl.DateTimeFormat('en-US', options).formatToParts(now);
+    
+    let yearNum = parseInt(parts.find(p => p.type === 'year')!.value, 10);
+    let monthNum = parseInt(parts.find(p => p.type === 'month')!.value, 10);
+    let dayNum = parseInt(parts.find(p => p.type === 'day')!.value, 10);
+
+    // Create a robust Date at noon UTC to handle day math safely
+    const targetDate = new Date(Date.UTC(yearNum, monthNum - 1, dayNum, 12, 0, 0));
+
     if (/\b(kal|tomorrow|cal)\b/.test(dayMarker) || (dayMarker === '' && /\b(kal|tomorrow|cal)\b/.test(lower))) {
-      targetDate.setDate(targetDate.getDate() + 1)
+      targetDate.setUTCDate(targetDate.getUTCDate() + 1)
     } else if (/\bparso\b/.test(dayMarker) || (dayMarker === '' && /\bparso\b/.test(lower))) {
-      targetDate.setDate(targetDate.getDate() + 2)
+      targetDate.setUTCDate(targetDate.getUTCDate() + 2)
     }
 
     // Explicitly set time in IST
     // We do this by creating a string in ISO format with +05:30 and parsing it
-    const year = targetDate.getFullYear()
-    const month = String(targetDate.getMonth() + 1).padStart(2, '0')
-    const day = String(targetDate.getDate()).padStart(2, '0')
+    const year = targetDate.getUTCFullYear()
+    const month = String(targetDate.getUTCMonth() + 1).padStart(2, '0')
+    const day = String(targetDate.getUTCDate()).padStart(2, '0')
     const timeISO = `${year}-${month}-${day}T${timeStr}:00+05:30`
     
     const parsed = new Date(timeISO)
@@ -284,8 +294,14 @@ function quickParse(text: string): ParsedDateTime | null {
     const finalDate = parsed
     const [hh, mm] = timeStr.split(':').map(Number)
 
-    const dayLabel = finalDate.getDate() === now.getDate() + 1 ? 'Tomorrow' :
-                     finalDate.getDate() === now.getDate() + 2 ? 'Day after tomorrow' : 'Today'
+    let dayLabel = 'Today';
+    if (/\b(kal|tomorrow|cal)\b/.test(dayMarker) || (dayMarker === '' && /\b(kal|tomorrow|cal)\b/.test(lower))) {
+      dayLabel = 'Tomorrow';
+    } else if (/\bparso\b/.test(dayMarker) || (dayMarker === '' && /\bparso\b/.test(lower))) {
+      dayLabel = 'Day after tomorrow';
+    } else if (!isExplicitDay && !hasExplicitToday && istTarget.getTime() < istNow.getTime() - 60_000) {
+      dayLabel = 'Tomorrow';
+    }
     
     // Format human readable time (keeping it simple for quickParse)
     const displayHH = hh % 12 || 12

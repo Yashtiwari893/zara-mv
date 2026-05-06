@@ -102,15 +102,26 @@ export async function POST(req: Request) {
 
 function getNextRecurrenceDate(recurrence: string, timeStr: string): Date {
   const [h, m] = timeStr.split(':').map(Number)
-  const next = new Date()
-  if (recurrence === 'daily') next.setDate(next.getDate() + 1)
-  else if (recurrence === 'weekly') next.setDate(next.getDate() + 7)
-  else if (recurrence === 'monthly') next.setMonth(next.getMonth() + 1)
-  // IST to UTC: subtract 5:30
-  let hours = h - 5
-  let mins = m - 30
-  if (mins < 0) { mins += 60; hours-- }
-  if (hours < 0) { hours += 24; next.setDate(next.getDate() - 1) }
-  next.setHours(hours, mins, 0, 0)
-  return next
+  
+  const now = new Date();
+  const options = { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' } as const;
+  const parts = new Intl.DateTimeFormat('en-US', options).formatToParts(now);
+  
+  let year = parseInt(parts.find(p => p.type === 'year')!.value, 10);
+  let month = parseInt(parts.find(p => p.type === 'month')!.value, 10);
+  let day = parseInt(parts.find(p => p.type === 'day')!.value, 10);
+  
+  // Use noon UTC to avoid any timezone boundary issues when adding days
+  let nextDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  
+  if (recurrence === 'daily') nextDate.setUTCDate(nextDate.getUTCDate() + 1);
+  else if (recurrence === 'weekly') nextDate.setUTCDate(nextDate.getUTCDate() + 7);
+  else if (recurrence === 'monthly') nextDate.setUTCMonth(nextDate.getUTCMonth() + 1);
+  
+  year = nextDate.getUTCFullYear();
+  month = nextDate.getUTCMonth() + 1;
+  day = nextDate.getUTCDate();
+  
+  const timeISO = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00+05:30`;
+  return new Date(timeISO);
 }
