@@ -253,49 +253,27 @@ function quickParse(text: string): ParsedDateTime | null {
     const rawPeriod = (oneShotMatch[4] || '').replace(/\./g, '').toLowerCase() // "p.m." -> "pm"
     const pseudoMatch = [oneShotMatch[0], oneShotMatch[2], oneShotMatch[3], rawPeriod] as unknown as RegExpMatchArray
     const timeStr = extractTime(pseudoMatch, lower)
-
-    // ── FIX: Get IST date parts using Intl (NOT server-local getDate/getMonth) ──
-    // On Vercel (UTC server), getDate() returns UTC day which differs from IST day
-    // between 12:00 AM IST and 5:30 AM IST. Use Intl to get true IST date parts.
-    const istParts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Kolkata',
-      year: 'numeric', month: '2-digit', day: '2-digit',
-    }).formatToParts(now)
-    const getIstPart = (type: string) => istParts.find(p => p.type === type)?.value ?? '01'
-    let istYear = getIstPart('year')
-    let istMonth = getIstPart('month')
-    let istDay = getIstPart('day')
-
-    // Construct IST base date for day adjustments
-    const istBaseDate = new Date(`${istYear}-${istMonth}-${istDay}T12:00:00+05:30`)
-
+    // Create date and force it to be IST by calculating the offset
+    const targetDate = new Date(now)
     if (/\b(kal|tomorrow|cal)\b/.test(dayMarker) || (dayMarker === '' && /\b(kal|tomorrow|cal)\b/.test(lower))) {
-      istBaseDate.setDate(istBaseDate.getDate() + 1)
+      targetDate.setDate(targetDate.getDate() + 1)
     } else if (/\bparso\b/.test(dayMarker) || (dayMarker === '' && /\bparso\b/.test(lower))) {
-      istBaseDate.setDate(istBaseDate.getDate() + 2)
+      targetDate.setDate(targetDate.getDate() + 2)
     }
 
-    // Re-extract adjusted IST date parts
-    const adjustedParts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Kolkata',
-      year: 'numeric', month: '2-digit', day: '2-digit',
-    }).formatToParts(istBaseDate)
-    const getAdjPart = (type: string) => adjustedParts.find(p => p.type === type)?.value ?? '01'
-    istYear = getAdjPart('year')
-    istMonth = getAdjPart('month')
-    istDay = getAdjPart('day')
-
-    // Explicitly set time in IST using correct IST date parts
-    const timeISO = `${istYear}-${istMonth}-${istDay}T${timeStr}:00+05:30`
+    // Explicitly set time in IST
+    // We do this by creating a string in ISO format with +05:30 and parsing it
+    const year = targetDate.getFullYear()
+    const month = String(targetDate.getMonth() + 1).padStart(2, '0')
+    const day = String(targetDate.getDate()).padStart(2, '0')
+    const timeISO = `${year}-${month}-${day}T${timeStr}:00+05:30`
     
     const parsed = new Date(timeISO)
     if (isNaN(parsed.getTime())) return null
     
     // Resolve "now" based on IST for past-check
-    const istNowStr = now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' })
-    const istTargetStr = parsed.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' })
-    const istNow = new Date(istNowStr)
-    const istTarget = new Date(istTargetStr)
+    const istNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }))
+    const istTarget = new Date(parsed.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }))
 
     // If no day keyword and the time is already past → push to tomorrow
     const isExplicitDay = /\b(kal|tomorrow|cal|parso|aaj|today)\b/.test(lower)
@@ -306,16 +284,8 @@ function quickParse(text: string): ParsedDateTime | null {
     const finalDate = parsed
     const [hh, mm] = timeStr.split(':').map(Number)
 
-    // Compare IST dates properly for day label
-    const finalIstParts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Kolkata',
-      year: 'numeric', month: '2-digit', day: '2-digit',
-    }).formatToParts(finalDate)
-    const finalIstDay = parseInt(finalIstParts.find(p => p.type === 'day')?.value ?? '0', 10)
-    const nowIstDay = parseInt(getIstPart('day'), 10)
-
-    const dayLabel = finalIstDay === nowIstDay + 1 ? 'Tomorrow' :
-                     finalIstDay === nowIstDay + 2 ? 'Day after tomorrow' : 'Today'
+    const dayLabel = finalDate.getDate() === now.getDate() + 1 ? 'Tomorrow' :
+                     finalDate.getDate() === now.getDate() + 2 ? 'Day after tomorrow' : 'Today'
     
     // Format human readable time (keeping it simple for quickParse)
     const displayHH = hh % 12 || 12
